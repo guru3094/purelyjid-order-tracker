@@ -1,13 +1,25 @@
 import { supabase } from "./client";
 
-export async function getActiveCouriers() {
+export interface Courier {
+  id: string;
+  courier_name: string;
+}
+
+export async function getCourierByName(
+  courierName: string
+): Promise<Courier | null> {
   const { data, error } = await supabase
     .from("courier_master")
-    .select("*")
-    .eq("is_active", true)
-    .order("courier_name");
+    .select("id, courier_name")
+    .eq("courier_name", courierName)
+    .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === "PGRST116") {
+      return null;
+    }
+    throw error;
+  }
 
   return data;
 }

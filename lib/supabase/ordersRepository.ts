@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { DbOrder } from "@/lib/mappers/orderMapper";
 
 export async function findOrderByOrderId(orderId: string) {
   const { data, error } = await supabase
@@ -7,26 +8,30 @@ export async function findOrderByOrderId(orderId: string) {
     .eq("order_id", orderId)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 
   return data;
 }
 
-export async function insertOrder(order: Record<string, unknown>) {
+export async function insertOrder(order: DbOrder) {
   const { data, error } = await supabase
     .from("orders")
     .insert(order)
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 
   return data;
 }
 
 export async function updateOrder(
   orderId: string,
-  order: Record<string, unknown>
+  order: Partial<DbOrder>
 ) {
   const { data, error } = await supabase
     .from("orders")
@@ -35,7 +40,9 @@ export async function updateOrder(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 
   return data;
 }

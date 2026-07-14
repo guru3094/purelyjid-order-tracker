@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { getGoogleAuth } from "./auth";
+import { config } from "@/lib/config";
 
 export async function readOrdersSheet() {
   const auth = getGoogleAuth();
@@ -10,7 +11,7 @@ export async function readOrdersSheet() {
   });
 
   const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.GOOGLE_SHEET_ID!,
+    spreadsheetId: config.google.sheetId,
     range: "Orders!A:N",
   });
 
