@@ -14,93 +14,119 @@ import { mapOrderToDb } from "@/lib/mappers/orderMapper";
 import { getStatusByCode } from "@/lib/supabase/statusRepository";
 import { getCourierByName } from "@/lib/supabase/courierRepository";
 
-export async function processQueue() {
+import { saveFailedOrder } from "@/lib/supabase/failedOrdersRepository";
+
+export interface QueueProcessingResult {
+  inserted: number;
+  updated: number;
+  failed: number;
+}
+
+export async function processQueue(): Promise<QueueProcessingResult> {
+  const result: QueueProcessingResult = {
+    inserted: 0,
+    updated: 0,
+    failed: 0,
+  };
 
   while (!isQueueEmpty()) {
-
-    // Get the next order from the queue
     const item = dequeue();
 
     if (!item) {
       continue;
     }
 
-    /*
-     * STEP 1
-     * Find the Status UUID from order_status_master
-     *
-     * Example:
-     * ORDER_RECEIVED
-     * becomes
-     * baed00df-30c0-4821-a3d8-fe40974fa1f0
-     */
-    const status = await getStatusByCode(item.order.status);
+    try {
+      /*
+       * STEP 1
+       * Resolve Status UUID
+       */
+      const status = await getStatusByCode(item.order.status);
 
-    /*
-     * STEP 2
-     * Find Courier UUID only for Delivery orders.
-     *
-     * Pickup orders do not require a courier.
-     */
-    let courierId: string | null = null;
-
-    if (
-      item.order.fulfillmentMethod === "Delivery" &&
-      item.order.courierPartner
-    ) {
-      const courier = await getCourierByName(
-        item.order.courierPartner
-      );
-
-      if (!courier) {
+      if (!status) {
         throw new Error(
-          `Courier '${item.order.courierPartner}' not found in courier_master`
+          `Status '${item.order.status}' not found in order_status_master`
         );
       }
 
-      courierId = courier.id;
-    }
+      /*
+       * STEP 2
+       * Resolve Courier UUID
+       */
+      let courierId: string | null = null;
 
-    /*
-     * STEP 3
-     * Convert the application object
-     * into the database object.
-     */
-    const dbOrder = mapOrderToDb(
-      item.order,
-      status.id,
-      courierId
-    );
+      if (
+        item.order.fulfillmentMethod === "Delivery" &&
+        item.order.courierPartner
+      ) {
+        const courier = await getCourierByName(
+          item.order.courierPartner
+        );
 
-    /*
-     * STEP 4
-     * Check whether the order already exists.
-     */
-    const existingOrder = await findOrderByOrderId(
-      item.order.orderId
-    );
+        if (!courier) {
+          throw new Error(
+            `Courier '${item.order.courierPartner}' not found in courier_master`
+          );
+        }
 
-    /*
-     * STEP 5
-     * Update existing order.
-     */
-    if (existingOrder) {
-
-      await updateOrder(
-        item.order.orderId,
-        dbOrder
-      );
-
-    } else {
+        courierId = courier.id;
+      }
 
       /*
-       * STEP 6
-       * Insert new order.
+       * STEP 3
+       * Map application model to database model
        */
-      await insertOrder(dbOrder);
+      const dbOrder = mapOrderToDb(
+        item.order,
+        status.id,
+        courierId
+      );
 
+      /*
+       * STEP 4
+       * Check if the order already exists
+       */
+      const existingOrder = await findOrderByOrderId(
+        item.order.orderId
+      );
+
+      /*
+       * STEP 5
+       * Update existing order or insert a new one
+       */
+      if (existingOrder) {
+        await updateOrder(
+          item.order.orderId,
+          dbOrder
+        );
+
+        result.updated++;
+      } else {
+        await insertOrder(dbOrder);
+
+        result.inserted++;
+      }
+    } catch (error) {
+      result.failed++;
+
+      await saveFailedOrder({
+        order_id: item.order.orderId,
+        failure_source: "GOOGLE_SHEETS",
+        payload: item.order,
+        error_message:
+          error instanceof Error
+            ? error.message
+            : "Unknown Error",
+        retry_count: item.retryCount,
+        status: "PENDING",
+      });
+
+      console.error(
+        `Queue processing failed for Order ${item.order.orderId}`,
+        error
+      );
     }
-
   }
 
+  return result;
 }
