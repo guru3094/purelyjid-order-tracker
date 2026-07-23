@@ -5,15 +5,20 @@ import {
 
 import { mapOrderResponse } from "@/lib/mappers/orderResponseMapper";
 import { ApiError } from "@/lib/errors/ApiError";
+import { OrderSearchRequest } from "@/lib/models/OrderSearchRequest";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
+const MAX_SEARCH_LENGTH = 100;
 
 export async function getOrders(
-  page: number = DEFAULT_PAGE,
-  pageSize: number = DEFAULT_PAGE_SIZE
+  request: Partial<OrderSearchRequest> = {}
 ) {
+  const page = request.page ?? DEFAULT_PAGE;
+  const pageSize = request.pageSize ?? DEFAULT_PAGE_SIZE;
+  const searchTerm = request.q?.trim();
+
   if (!Number.isInteger(page) || page < 1) {
     throw new ApiError("page must be a positive integer", 400);
   }
@@ -29,10 +34,26 @@ export async function getOrders(
     );
   }
 
-  const { orders, totalRecords } = await getPaginatedOrders(
+  if (searchTerm && searchTerm.length > MAX_SEARCH_LENGTH) {
+    throw new ApiError(
+      `q cannot be greater than ${MAX_SEARCH_LENGTH} characters`,
+      400
+    );
+  }
+
+  const orderSearchRequest: OrderSearchRequest = {
     page,
-    pageSize
-  );
+    pageSize,
+    q: searchTerm || undefined,
+    status: request.status,
+    fulfillmentMethod: request.fulfillmentMethod,
+    courier: request.courier,
+    sortBy: request.sortBy,
+    sortOrder: request.sortOrder,
+  };
+
+  const { orders, totalRecords } =
+    await getPaginatedOrders(orderSearchRequest);
 
   const totalPages =
     totalRecords === 0
@@ -43,6 +64,7 @@ export async function getOrders(
     success: true,
     page,
     pageSize,
+    query: searchTerm || null,
     totalRecords,
     totalPages,
     orders: orders.map(mapOrderResponse),

@@ -1,7 +1,8 @@
 import { supabase } from "./client";
 import { DbOrder } from "@/lib/mappers/orderMapper";
+import { OrderSearchRequest } from "@/lib/models/OrderSearchRequest";
 
-const ORDER_SELECT = `
+const BASE_ORDER_FIELDS = `
   order_id,
   customer_name,
   mobile_number,
@@ -12,7 +13,11 @@ const ORDER_SELECT = `
   expected_delivery_date,
   remarks,
   created_at,
-  updated_at,
+  updated_at
+`;
+
+const ORDER_SELECT = `
+  ${BASE_ORDER_FIELDS},
   order_status_master (
     status_code
   ),
@@ -21,9 +26,34 @@ const ORDER_SELECT = `
   )
 `;
 
-export async function findOrderByOrderId(
-  orderId: string
-) {
+function buildOrderSelect(
+  status?: string,
+  courier?: string
+): string {
+  const statusRelation = status
+    ? `order_status_master:order_status_master!inner (
+        status_code
+      )`
+    : `order_status_master (
+        status_code
+      )`;
+
+  const courierRelation = courier
+    ? `courier_master:courier_master!inner (
+        courier_name
+      )`
+    : `courier_master (
+        courier_name
+      )`;
+
+  return `
+    ${BASE_ORDER_FIELDS},
+    ${statusRelation},
+    ${courierRelation}
+  `;
+}
+
+export async function findOrderByOrderId(orderId: string) {
   const { data, error } = await supabase
     .from("orders")
     .select(ORDER_SELECT)
@@ -84,18 +114,58 @@ export async function getAllOrders() {
   return data;
 }
 
-export async function getPaginatedOrders(
-  page: number,
-  pageSize: number
-) {
+export async function getPaginatedOrders({
+  page,
+  pageSize,
+  q,
+  status,
+  fulfillmentMethod,
+  courier,
+}: OrderSearchRequest) {
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, error, count } = await supabase
+  const selectQuery = buildOrderSelect(status, courier);
+
+  let query = supabase
     .from("orders")
-    .select(ORDER_SELECT, {
+    .select(selectQuery, {
       count: "exact",
-    })
+    });
+
+  if (q) {
+    query = query.or(
+      [
+        `order_id.ilike.%${q}%`,
+        `customer_name.ilike.%${q}%`,
+        `mobile_number.ilike.%${q}%`,
+        `email.ilike.%${q}%`,
+      ].join(",")
+    );
+  }
+
+  if (status) {
+    query = query.ilike(
+      "order_status_master.status_code",
+      status
+    );
+  }
+
+  if (fulfillmentMethod) {
+    query = query.ilike(
+      "fulfillment_method",
+      fulfillmentMethod
+    );
+  }
+
+  if (courier) {
+    query = query.ilike(
+      "courier_master.courier_name",
+      courier
+    );
+  }
+
+  const { data, error, count } = await query
     .order("created_at", {
       ascending: false,
     })
