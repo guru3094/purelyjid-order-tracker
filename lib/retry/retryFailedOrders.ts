@@ -1,3 +1,5 @@
+import { config } from "@/lib/config";
+
 import { enqueue } from "@/lib/queue/writeQueue";
 import { processQueue } from "@/lib/queue/queueProcessor";
 
@@ -5,6 +7,7 @@ import {
   getPendingFailedOrders,
   resolveFailedOrder,
   incrementRetryCount,
+  abandonFailedOrder,
 } from "@/lib/supabase/failedOrdersRepository";
 
 import { mapFailedOrderToOrder } from "@/lib/mappers/failedOrderMapper";
@@ -35,18 +38,30 @@ export async function retryFailedOrders() {
       if (result.failed === 0) {
         await resolveFailedOrder(failedOrder.id);
       } else {
-        await incrementRetryCount(
-          failedOrder.id,
-          failedOrder.retry_count + 1
-        );
+        const newRetryCount = failedOrder.retry_count + 1;
+
+        if (newRetryCount >= config.retry.maxRetryCount) {
+          await abandonFailedOrder(failedOrder.id);
+        } else {
+          await incrementRetryCount(
+            failedOrder.id,
+            newRetryCount
+          );
+        }
       }
     } catch (error) {
       failed++;
 
-      await incrementRetryCount(
-        failedOrder.id,
-        failedOrder.retry_count + 1
-      );
+      const newRetryCount = failedOrder.retry_count + 1;
+
+      if (newRetryCount >= config.retry.maxRetryCount) {
+        await abandonFailedOrder(failedOrder.id);
+      } else {
+        await incrementRetryCount(
+          failedOrder.id,
+          newRetryCount
+        );
+      }
 
       console.error(
         `Retry failed for Order ${failedOrder.order_id}`,

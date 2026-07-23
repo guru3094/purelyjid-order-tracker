@@ -79,3 +79,18 @@ export async function incrementRetryCount(
     throw error;
   }
 }
+export async function abandonFailedOrder(
+  id: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("failed_orders")
+    .update({
+      status: "ABANDONED",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) {
+    throw error;
+  }
+}

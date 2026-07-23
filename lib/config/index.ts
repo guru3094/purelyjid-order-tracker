@@ -1,36 +1,39 @@
 export const config = {
+  appName: "PurelyJid Order Tracker",
 
-    appName: "PurelyJid Order Tracker",
+  syncIntervalMinutes: Number(
+    process.env.SYNC_INTERVAL_MINUTES ?? 5
+  ),
 
-    syncIntervalMinutes:
-        Number(process.env.SYNC_INTERVAL_MINUTES ?? 5),
+  google: {
+    projectId: process.env.GOOGLE_PROJECT_ID ?? "",
 
-    google: {
+    clientEmail:
+      process.env.GOOGLE_CLIENT_EMAIL ?? "",
 
-        projectId:
-            process.env.GOOGLE_PROJECT_ID ?? "",
+    privateKey:
+      process.env.GOOGLE_PRIVATE_KEY?.replace(
+        /\\n/g,
+        "\n"
+      ) ?? "",
 
-        clientEmail:
-            process.env.GOOGLE_CLIENT_EMAIL ?? "",
+    sheetId:
+      process.env.GOOGLE_SHEET_ID ?? "",
 
-        privateKey:
-            process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n") ?? "",
+    worksheetName: "Orders",
+  },
 
-        sheetId:
-            process.env.GOOGLE_SHEET_ID ?? "",
+  supabase: {
+    url:
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
 
-        worksheetName: "Orders"
+    serviceRoleKey:
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  },
 
-    },
-
-    supabase: {
-
-        url:
-            process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-
-        serviceRoleKey:
-            process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
-
-    }
-
+  retry: {
+    maxRetryCount: Number(
+      process.env.MAX_RETRY_COUNT ?? 3
+    ),
+  },
 };
