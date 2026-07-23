@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger/logger";
+
 import {
   dequeue,
   isQueueEmpty,
@@ -13,8 +15,6 @@ import { mapOrderToDb } from "@/lib/mappers/orderMapper";
 
 import { getStatusByCode } from "@/lib/supabase/statusRepository";
 import { getCourierByName } from "@/lib/supabase/courierRepository";
-
-import { saveFailedOrder } from "@/lib/supabase/failedOrdersRepository";
 
 export interface QueueProcessingResult {
   inserted: number;
@@ -74,7 +74,7 @@ export async function processQueue(): Promise<QueueProcessingResult> {
 
       /*
        * STEP 3
-       * Map application model to database model
+       * Map to database model
        */
       const dbOrder = mapOrderToDb(
         item.order,
@@ -84,7 +84,7 @@ export async function processQueue(): Promise<QueueProcessingResult> {
 
       /*
        * STEP 4
-       * Check if the order already exists
+       * Check whether order exists
        */
       const existingOrder = await findOrderByOrderId(
         item.order.orderId
@@ -92,7 +92,7 @@ export async function processQueue(): Promise<QueueProcessingResult> {
 
       /*
        * STEP 5
-       * Update existing order or insert a new one
+       * Update or Insert
        */
       if (existingOrder) {
         await updateOrder(
@@ -101,29 +101,40 @@ export async function processQueue(): Promise<QueueProcessingResult> {
         );
 
         result.updated++;
+
+        logger.info(
+          "queueProcessor",
+          "Order updated successfully",
+          {
+            orderId: item.order.orderId,
+          }
+        );
       } else {
         await insertOrder(dbOrder);
 
         result.inserted++;
+
+        logger.info(
+          "queueProcessor",
+          "Order inserted successfully",
+          {
+            orderId: item.order.orderId,
+          }
+        );
       }
     } catch (error) {
       result.failed++;
 
-      await saveFailedOrder({
-        order_id: item.order.orderId,
-        failure_source: "GOOGLE_SHEETS",
-        payload: item.order,
-        error_message:
-          error instanceof Error
-            ? error.message
-            : "Unknown Error",
-        retry_count: item.retryCount,
-        status: "PENDING",
-      });
-
-      console.error(
-        `Queue processing failed for Order ${item.order.orderId}`,
-        error
+      logger.error(
+        "queueProcessor",
+        "Queue processing failed",
+        {
+          orderId: item.order.orderId,
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        }
       );
     }
   }
