@@ -1,65 +1,196 @@
-import Image from "next/image";
+"use client";
+
+import { useRef, useState } from "react";
+
+import BrandLogo from "@/components/branding/BrandLogo";
+import OrderTrackingForm from "@/components/tracking/OrderTrackingForm";
+import OrderTrackingResult from "@/components/tracking/OrderTrackingResult";
+
+import { OrderResponse } from "@/lib/types/orderApi";
+import { TrackOrderApiResponse } from "@/lib/types/trackingApi";
+
+function getErrorMessage(
+  responseBody: unknown
+): string {
+  if (
+    typeof responseBody === "object" &&
+    responseBody !== null
+  ) {
+    const body = responseBody as {
+      message?: string;
+      error?: string;
+    };
+
+    return (
+      body.message ??
+      body.error ??
+      "We could not track your order."
+    );
+  }
+
+  return "We could not track your order.";
+}
 
 export default function Home() {
+  const [order, setOrder] =
+    useState<OrderResponse | null>(null);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] = useState<
+    string | null
+  >(null);
+
+  const controllerRef =
+    useRef<AbortController | null>(null);
+
+  async function handleTrackOrder(
+    orderId: string,
+    mobileNumber: string
+  ) {
+    controllerRef.current?.abort();
+
+    const controller =
+      new AbortController();
+
+    controllerRef.current = controller;
+
+    setLoading(true);
+    setError(null);
+    setOrder(null);
+
+    try {
+      const searchParams =
+        new URLSearchParams({
+          orderId,
+          mobileNumber,
+        });
+
+      const response = await fetch(
+        `/api/track-order?${searchParams.toString()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        }
+      );
+
+      const responseBody =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          getErrorMessage(responseBody)
+        );
+      }
+
+      const trackingResponse =
+        responseBody as TrackOrderApiResponse;
+
+      setOrder(trackingResponse.order);
+    } catch (requestError) {
+      if (
+        requestError instanceof DOMException &&
+        requestError.name === "AbortError"
+      ) {
+        return;
+      }
+
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "We could not track your order."
+      );
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+    }
+  }
+
+  function handleTrackAnother() {
+    setOrder(null);
+    setError(null);
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="min-h-screen bg-slate-100">
+      <header className="border-b border-slate-200 bg-white shadow-sm">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
+          <div className="flex items-center gap-4">
+            <BrandLogo priority />
+
+            <div className="hidden border-l border-slate-200 pl-4 sm:block">
+              <p className="text-sm font-bold text-slate-900">
+                Order Tracking
+              </p>
+
+              <p className="mt-0.5 text-xs text-slate-500">
+                Track your PurelyJid order
+              </p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section className="relative overflow-hidden bg-slate-950">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.12),transparent_40%)]" />
+
+        <div className="relative mx-auto max-w-6xl px-5 py-14 text-center text-white sm:px-8 sm:py-20">
+          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-400">
+            PurelyJid Orders
+          </p>
+
+          <h1 className="mx-auto mt-4 max-w-3xl text-3xl font-extrabold tracking-tight sm:text-5xl">
+            Know where your order is
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+
+          <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-slate-300 sm:text-base">
+            Track your PurelyJid order using
+            the Order ID and mobile number
+            provided during purchase.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </section>
+
+      <section className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
+        {error && (
+          <div
+            role="alert"
+            className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            <p className="font-bold text-red-800">
+              Order could not be found
+            </p>
+
+            <p className="mt-1 text-sm leading-6 text-red-700">
+              {error}
+            </p>
+          </div>
+        )}
+
+        {order ? (
+          <OrderTrackingResult
+            order={order}
+            onTrackAnother={handleTrackAnother}
+          />
+        ) : (
+          <div className="mx-auto max-w-xl">
+            <OrderTrackingForm
+              loading={loading}
+              onSubmit={handleTrackOrder}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          </div>
+        )}
+      </section>
+
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto max-w-6xl px-5 py-6 text-center text-xs text-slate-500 sm:px-8">
+          © {new Date().getFullYear()} PurelyJid.
+          All rights reserved.
         </div>
-      </main>
-    </div>
+      </footer>
+    </main>
   );
 }
