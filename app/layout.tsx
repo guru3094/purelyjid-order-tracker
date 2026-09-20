@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const siteUrl = "https://purelyjid.in";
@@ -121,7 +122,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en-IN">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
