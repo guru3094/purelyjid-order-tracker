@@ -677,3 +677,27 @@ html { scroll-behavior: smooth; }
 .staff-order-success{display:grid;gap:18px;margin-top:24px}.staff-order-summary{display:grid;gap:8px;padding:18px;border:1px solid #eee3df;border-radius:14px;background:#fffaf8}.staff-order-summary p{margin:0}.staff-whatsapp-note{margin:0;color:#5f5956;line-height:1.55}.staff-success-actions{display:flex;gap:12px;flex-wrap:wrap}@media(max-width:680px){.staff-success-actions{display:grid}}
 
 .sales-shell{min-height:100vh;display:grid;grid-template-columns:220px minmax(0,1fr);background:#faf8f7}.sales-sidebar{position:sticky;top:0;height:100vh;background:#fff;border-right:1px solid #eee3df;padding:24px 16px;display:flex;flex-direction:column;gap:24px}.sales-sidebar-logo{width:130px;height:auto}.sales-sidebar nav{display:grid;gap:8px}.sales-sidebar nav a{padding:11px 12px;border-radius:10px;text-decoration:none;color:#333;font-weight:700}.sales-sidebar nav a.active,.sales-sidebar nav a:hover{background:#fff0ed;color:#d94d40}.sales-sidebar>button{margin-top:auto}.sales-content{padding:28px;min-width:0}.staff-orders-card{max-width:none}.staff-orders-heading{display:flex;justify-content:space-between;gap:16px}.staff-filters{display:grid;grid-template-columns:minmax(260px,2fr) repeat(3,minmax(150px,1fr));gap:12px;margin:22px 0 8px}.staff-results-count{font-size:13px;color:#6d6866}.staff-table-wrap{overflow:auto;margin-top:14px;border:1px solid #eee3df;border-radius:12px}.staff-orders-table{width:100%;border-collapse:collapse;min-width:1150px;background:#fff}.staff-orders-table th,.staff-orders-table td{text-align:left;padding:12px;border-bottom:1px solid #f0e9e6;vertical-align:top;font-size:13px}.staff-orders-table th{background:#fff8f6}.staff-orders-table small{color:#777}@media(max-width:760px){.sales-shell{display:block}.sales-sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid #eee3df;padding:14px}.sales-sidebar-logo{width:100px}.sales-sidebar nav{grid-template-columns:1fr 1fr}.sales-sidebar>button{display:none}.sales-content{padding:14px}.staff-filters{grid-template-columns:1fr}}
+
+.sales-sidebar {
+  display: flex;
+  flex-direction: column;
+}
+
+.sales-logout {
+  margin-top: auto;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.sales-logout:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.55);
+}
