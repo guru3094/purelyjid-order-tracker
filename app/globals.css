@@ -701,3 +701,17 @@ html { scroll-behavior: smooth; }
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.55);
 }
+
+
+/* Public Resin Artist acceptance page */
+.artist-response-page { min-height: 100vh; display: grid; place-items: center; padding: 28px; background: #f8f3ea; }
+.artist-response-card { width: min(560px, 100%); padding: 36px; border: 1px solid #eadfce; border-radius: 24px; background: #fff; box-shadow: 0 24px 70px rgba(58,40,20,.10); text-align: center; }
+.artist-response-logo { width: 150px; height: auto; margin: 0 auto 22px; }
+.artist-response-kicker { margin: 0 0 10px; color: #b7864d; font-size: 12px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.artist-response-card h1 { margin: 0; font-size: clamp(28px, 5vw, 42px); line-height: 1.1; color: #171512; }
+.artist-response-summary { margin: 28px 0; padding: 20px; border-radius: 16px; background: #f8f3ea; text-align: left; }
+.artist-response-summary p { margin: 8px 0; }
+.artist-response-note { color: #6e675e; line-height: 1.6; }
+.artist-accept-button { width: 100%; min-height: 52px; margin-top: 14px; border: 0; border-radius: 999px; background: #171512; color: white; font-weight: 800; }
+.artist-response-success { margin-top: 22px; padding: 18px; border-radius: 14px; background: #eefbf1; line-height: 1.6; }
+.artist-response-error { margin-top: 14px; padding: 14px; border-radius: 12px; background: #fff1f2; color: #9f1239; }

@@ -1,4 +1,5 @@
 import { after, NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { getOrders } from "@/lib/services/orderService";
 import { handleApiRequest } from "@/lib/api/handleApiRequest";
@@ -9,6 +10,8 @@ import { OrderSearchRequest } from "@/lib/models/OrderSearchRequest";
 import { createOrder } from "@/lib/services/createOrderService";
 import { isStaffAuthenticated } from "@/lib/auth/staffAuth";
 import { syncGoogleSheet } from "@/lib/services/googleSheetSyncService";
+import { STAFF_ORDERS_CACHE_TAG } from "@/lib/services/staffOrdersCacheService";
+import { saveArtistOrderRequest } from "@/lib/services/artistOrderRequestService";
 
 export async function GET(request: NextRequest) {
   const correlationId = generateCorrelationId();
@@ -74,6 +77,18 @@ export async function POST(request: NextRequest) {
     logger.info("ordersApi", "Creating order in Google Sheet");
     const result = await createOrder(body);
 
+    await saveArtistOrderRequest({
+      orderId: result.orderId,
+      orderDate: result.orderDate,
+      customerName: String(body.customerName ?? "").trim(),
+      productName: String(body.productDetails ?? "").trim(),
+      artistDetails: body.artistDetails,
+    });
+
+    // The Google Sheet changed, so expire the staff Orders cache immediately.
+    // The next Orders request will read fresh data and cache it again for 60 seconds.
+    revalidateTag(STAFF_ORDERS_CACHE_TAG, { expire: 0 });
+
     after(async () => {
       try {
         const syncResult = await syncGoogleSheet();
@@ -86,19 +101,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    const artistNumber = (process.env.RESIN_ARTIST_WHATSAPP_NUMBER ?? "").replace(/\D/g, "");
-    const artistMessage = [
-      "Hi,", "",
-      "PurelyJid has received a new order.",
-      `Order ID: ${result.orderId}`,
-      `Product: ${String(body.productDetails ?? "").trim()}`,
-      "", "Please check the order details in the portal.", "", "– PurelyJid",
-    ].join("\n");
-    const artistWhatsAppUrl = artistNumber
-      ? `https://wa.me/${artistNumber}?text=${encodeURIComponent(artistMessage)}`
-      : null;
-
     logger.info("ordersApi", "Order created successfully", { orderId: result.orderId });
-    return NextResponse.json({ correlationId, ...result, artistWhatsAppUrl }, { status: 201 });
+    return NextResponse.json({ correlationId, ...result }, { status: 201 });
   }));
 }
