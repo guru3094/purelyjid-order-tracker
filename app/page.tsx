@@ -40,7 +40,7 @@ export default function HomePage() {
           </div>
           <span className="hero-editorial-note">Wedding keepsakes · Custom gifts · Creative experiences</span>
         </div>
-        <div className="hero-image-wrap"><Image src="/hero.jpg" alt="Handcrafted resin art" fill priority sizes="(max-width: 900px) 100vw, 48vw" className="hero-image" /><span>The keepsake edit · PurelyJid studio</span></div>
+        <div className="hero-image-wrap"><Image src="/hero.jpg" alt="Handcrafted resin art" fill priority sizes="(max-width: 900px) 100vw, 48vw" className="hero-image" /><span>PurelyJid studio</span></div>
       </section>
 
       <section className="stats-strip">
@@ -56,7 +56,7 @@ export default function HomePage() {
         <p className="kicker">Our Collections</p>
         <div className="section-heading-row">
           <h2>Crafted for every moment.</h2>
-          <p>Choose a collection to enquire on WhatsApp. DIY craft kits open directly on pjresin.in.</p>
+          <p>Choose a collection to enquire on WhatsApp. DIY craft kits open directly on our Raw Materials Website. Click on Shop Now below.</p>
         </div>
         <div className="collection-grid">
           {collections.map((item, index) => (
