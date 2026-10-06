@@ -19,6 +19,7 @@ export type Design = {
   scale: number;
   width: number;
   height: number;
+  groupId?: string;
 };
 
 export type Placement = { design: Design; x: number; y: number; rotated: boolean; width: number; height: number };
@@ -83,8 +84,8 @@ function initialOrder(designs: Design[], attempt: number, seed: number) {
   });
 }
 
-function build(order: Design[], spacing: number, rotation: boolean, heuristic: number, size: MatSize): Mat[] {
-  const mats: Mat[] = [];
+function build(order: Design[], spacing: number, rotation: boolean, heuristic: number, size: MatSize, seeded: Mat[] = []): Mat[] {
+  const mats: Mat[] = seeded.map(mat => ({ size: mat.size, placements: [...mat.placements], free: mat.free.map(r => ({ ...r })) }));
   const profile = MAT_SIZES[size];
   const usableW = profile.cutWidth - spacing;
   const usableH = profile.cutHeight - spacing;
@@ -142,6 +143,51 @@ export function nest(designs: Design[], spacing: number, rotation: boolean, seed
     if (!best || fitness(candidate) < fitness(best)) best = candidate;
   }
   return best!;
+}
+
+// Text stays in entry order. Try each full design across the mat, then along
+// its length at 90°. Wrapped continuations are already short enough to stay
+// upright. MaxRects fits images into the remaining free regions.
+export function nestFlowed(text: Design[], images: Design[], spacing: number, rotation: boolean, seed = 1, size: MatSize = "short"): Mat[] {
+  if (!text.length) return nest(images, spacing, rotation, seed, size);
+  if (!MAT_SIZES[size]) throw new Error("Select a supported Cricut mat size.");
+  if (!Number.isFinite(spacing) || spacing < 0 || spacing > 10) throw new Error("Safe spacing must be between 0 and 10 mm.");
+  if (text.length + images.length > 250) throw new Error("Limit this batch to 250 individual cut lines and images.");
+  const profile = MAT_SIZES[size];
+  const usableW = profile.cutWidth - spacing;
+  const usableH = profile.cutHeight - spacing;
+  const seeded: Mat[] = [];
+  let cursor = 0;
+  for (const design of text) {
+    const horizontal = design.width + spacing <= usableW + EPS && design.height + spacing <= usableH + EPS;
+    const rotated = !horizontal && rotation && design.height + spacing <= usableW + EPS &&
+      design.width + spacing <= usableH + EPS;
+    const width = (rotated ? design.height : design.width) + spacing;
+    const height = (rotated ? design.width : design.height) + spacing;
+    if (width > usableW + EPS || height > usableH + EPS) {
+      throw new Error(`“${design.content}” exceeds the selected mat's cuttable area at its requested letter size.`);
+    }
+    if (!seeded.length || cursor + height > usableH + EPS) {
+      seeded.push({ size, placements: [], free: [{ x: 0, y: 0, w: usableW, h: usableH }] });
+      cursor = 0;
+    }
+    const mat = seeded[seeded.length - 1];
+    occupy(mat, { x: 0, y: cursor, w: width, h: height });
+    mat.placements.push({ design, x: spacing / 2, y: cursor + spacing / 2,
+      rotated, width: width - spacing, height: height - spacing });
+    cursor += height;
+  }
+  if (!images.length) return seeded;
+  let best: Mat[] | null = null;
+  for (let i = 0; i < (images.length < 35 ? 72 : 36); i++) {
+    const candidate = build(initialOrder(images, i, seed), spacing, rotation, i, size, seeded);
+    if (!best || fitness(candidate) < fitness(best)) best = candidate;
+  }
+  return best!;
+}
+
+export function matDesignCount(mat: Mat) {
+  return new Set(mat.placements.map(p => p.design.groupId || `design-${p.design.sequence}`)).size;
 }
 
 export function matUtilization(mat: Mat) {

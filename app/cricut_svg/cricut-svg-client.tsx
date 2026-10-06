@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { MAT_SIZES, matSvg, matUtilization, matCuttingCost, nest, placementPath, type Design, type Mat, type MatSize } from "./nesting";
+import { MAT_SIZES, matSvg, matUtilization, matCuttingCost, matDesignCount, nestFlowed, placementPath, type Design, type Mat, type MatSize } from "./nesting";
+import { wrapText, type TextOutline } from "./text-flow";
 import { traceArtwork, type ArtworkOutline } from "./artwork-trace";
 import styles from "./cricut-svg.module.css";
 
@@ -11,7 +12,6 @@ const FONTS = [
   ["PF07", "Stars & Love"], ["PF08", "Monarda"],
 ] as const;
 type Row = { id: string; content: string; fontCode: string; width: string; quantity: string };
-type Outline = { path: string; bounds: { x1: number; y1: number; x2: number; y2: number }; fillRule: "nonzero" | "evenodd" };
 type ArtworkRow = { id: string; file: File | null; preview: string; link: string; width: string; quantity: string; threshold: string; minArea: string; invert: boolean; outline: ArtworkOutline | null; approved: boolean };
 function row(): Row { return { id: crypto.randomUUID(), content: "", fontCode: "PF01", width: "", quantity: "1" }; }
 function artworkRow(): ArtworkRow { return { id: crypto.randomUUID(), file: null, preview: "", link: "", width: "", quantity: "1", threshold: "180", minArea: "8", invert: false, outline: null, approved: false }; }
@@ -31,7 +31,7 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
   const [rows, setRows] = useState<Row[]>([row()]);
   const [artworks, setArtworks] = useState<ArtworkRow[]>([]);
   const [artworkBusy, setArtworkBusy] = useState("");
-  const outlineCache = useRef(new Map<string, Outline>());
+  const outlineCache = useRef(new Map<string, TextOutline>());
   const [spacing, setSpacing] = useState("2");
   const [matSize, setMatSize] = useState<MatSize>("short");
   const [allowRotation, setAllowRotation] = useState(true);
@@ -96,7 +96,11 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
 
   async function makeDesigns(): Promise<Design[]> {
     const designs: Design[] = [];
-    const maxWidth = MAT_SIZES[matSize].height / 10;
+    const maxImageWidth = MAT_SIZES[matSize].height / 10;
+    const spacingMm = Number(spacing);
+    if (!Number.isFinite(spacingMm) || spacingMm < 0 || spacingMm > 10) throw new Error("Safe spacing must be between 0 and 10 mm.");
+    const lineWidth = MAT_SIZES[matSize].cutWidth - 2 * spacingMm;
+    const availableLength = MAT_SIZES[matSize].cutHeight - 2 * spacingMm;
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const text = r.content.trim();
@@ -104,33 +108,44 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
       const widthCm = Number(r.width);
       const count = Number(r.quantity);
       if (!text || text.length > 100 || /[\r\n]/.test(text)) throw new Error(`Content ${i + 1}: enter one line of text (up to 100 characters).`);
-      if (!Number.isFinite(widthCm) || widthCm < 0.1 || widthCm > maxWidth) throw new Error(`Content ${i + 1}: width must be 0.1–${maxWidth} cm for the selected mat.`);
+      if (!Number.isFinite(widthCm) || widthCm < 0.1 || widthCm > 100) throw new Error(`Content ${i + 1}: width must be 0.1–100 cm.`);
       if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error(`Content ${i + 1}: quantity must be 1–100.`);
-      const cacheKey = `${r.fontCode}\0${text}`;
-      let outline = outlineCache.current.get(cacheKey);
-      if (!outline) {
-        const response = await fetch("/api/cricut-svg/outlines", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: text, fontCode: r.fontCode }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(`Content ${i + 1}: ${data.error || "Canva could not create a cut outline."}`);
-        outline = data as Outline;
-        outlineCache.current.set(cacheKey, outline);
-      }
-      // Canva's rendered ink bounds establish the exact physical width.
-      const b = outline.bounds;
-      const inkWidth = b.x2 - b.x1;
-      const inkHeight = b.y2 - b.y1;
-      const width = widthCm * 10;
-      const scale = width / inkWidth;
-      const design: Design = {
-        id: r.id, sequence: 0, content: text, fontCode: r.fontCode,
-        path: outline.path, fillRule: outline.fillRule, bounds: { x1: b.x1, y1: b.y1 },
-        scale, width, height: inkHeight * scale,
+      const outlineFor = async (line: string) => {
+        const key = `${r.fontCode}\0${line}`;
+        let result = outlineCache.current.get(key);
+        if (!result) {
+          const response = await fetch("/api/cricut-svg/outlines", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: line, fontCode: r.fontCode }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(`Content ${i + 1}: ${data.error || "Canva could not create a cut outline."}`);
+          result = data as TextOutline;
+          outlineCache.current.set(key, result);
+        }
+        return result;
       };
-      if (!Number.isFinite(design.height) || design.height <= 0) throw new Error(`Content ${i + 1}: invalid font bounds.`);
-      for (let j = 0; j < count; j++) designs.push({ ...design, sequence: designs.length });
+      const fullOutline = await outlineFor(text);
+      const fullWidth = fullOutline.bounds.x2 - fullOutline.bounds.x1;
+      if (!Number.isFinite(fullWidth) || fullWidth <= 0) throw new Error(`Content ${i + 1}: invalid Canva font bounds.`);
+      const requestedWidth = widthCm * 10;
+      const scale = requestedWidth / fullWidth;
+      const fullHeight = (fullOutline.bounds.y2 - fullOutline.bounds.y1) * scale;
+      const horizontalFit = requestedWidth <= lineWidth && fullHeight <= availableLength;
+      const verticalFit = allowRotation && fullHeight <= lineWidth && requestedWidth <= availableLength;
+      const lines = horizontalFit || verticalFit
+        ? [{ content: text, outline: fullOutline, scale, width: requestedWidth, height: fullHeight }]
+        : await wrapText(text, requestedWidth, lineWidth, outlineFor, fullOutline);
+      for (let j = 0; j < count; j++) for (const line of lines) {
+        if (!Number.isFinite(line.height) || line.height <= 0 || !Number.isFinite(line.width) || line.width <= 0) {
+          throw new Error(`Content ${i + 1}: invalid Canva font bounds.`);
+        }
+        const b = line.outline.bounds;
+        designs.push({ id: r.id, groupId: `${r.id}-${j}`, sequence: designs.length,
+          content: line.content, fontCode: r.fontCode, path: line.outline.path,
+          fillRule: line.outline.fillRule, bounds: { x1: b.x1, y1: b.y1 },
+          scale: line.scale, width: line.width, height: line.height });
+      }
       if (designs.length > 250) throw new Error("Limit this batch to 250 individual designs.");
     }
     for (let i = 0; i < artworks.length; i++) {
@@ -138,7 +153,7 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
       const widthCm = Number(r.width);
       const count = Number(r.quantity);
       if (!r.file || !r.outline || !r.approved) throw new Error(`Image ${i + 1}: prepare and approve the cut contour before generating mats.`);
-      if (!Number.isFinite(widthCm) || widthCm < .1 || widthCm > maxWidth) throw new Error(`Image ${i + 1}: width must be 0.1–${maxWidth} cm for the selected mat.`);
+      if (!Number.isFinite(widthCm) || widthCm < .1 || widthCm > maxImageWidth) throw new Error(`Image ${i + 1}: width must be 0.1–${maxImageWidth} cm for the selected mat.`);
       if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error(`Image ${i + 1}: quantity must be 1–100.`);
       const b = r.outline.bounds;
       const scale = widthCm * 10 / (b.x2 - b.x1);
@@ -157,7 +172,8 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
     try {
       const nextSeed = again ? seed + 173 : seed;
       const designs = await makeDesigns();
-      const result = nest(designs, Number(spacing), allowRotation, nextSeed, matSize);
+      const result = nestFlowed(designs.filter(d => d.fontCode !== "IMAGE"),
+        designs.filter(d => d.fontCode === "IMAGE"), Number(spacing), allowRotation, nextSeed, matSize);
       setMats(result);
       setSeed(nextSeed);
       setStale(false);
@@ -239,13 +255,13 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
       </section>
 
       <section className={styles.panel} aria-labelledby="content-heading">
-        <div className={styles.sectionHeading}><h2 id="content-heading">2. Enter contents</h2><p>Width is the final visible design width, measured across the font outlines.</p></div>
+        <div className={styles.sectionHeading}><h2 id="content-heading">2. Enter contents</h2><p>Enter one line per content. The full design is placed horizontally when it fits, rotated along the mat when enabled and needed, then split into lines only if neither fits. The next content starts below its final cut line.</p></div>
         <div className={styles.rows}>{rows.map((r, index) => <div className={styles.row} key={r.id}>
           <div className={styles.rowTitle}><strong>Content {index + 1}</strong><button className={styles.textButton} type="button" disabled={rows.length === 1} onClick={() => { setRows(old => old.filter(x => x.id !== r.id)); invalidate(); }}>Remove</button></div>
           <div className={styles.fields}>
             <label className={styles.contentField}>Text / content<input value={r.content} maxLength={100} placeholder="e.g. Happy Birthday" onChange={e => update(r.id, "content", e.target.value)} /></label>
             <label>Font<select value={r.fontCode} onChange={e => update(r.id, "fontCode", e.target.value)}>{FONTS.map(([code, name]) => <option key={code} value={code}>{code} – {name}</option>)}</select></label>
-            <label>Width (cm)<input type="number" min="0.1" max={MAT_SIZES[matSize].height / 10} step="0.1" value={r.width} placeholder="5.0" onChange={e => update(r.id, "width", e.target.value)} /></label>
+            <label>Width (cm)<input type="number" min="0.1" max="100" step="0.1" value={r.width} placeholder="5.0" onChange={e => update(r.id, "width", e.target.value)} /></label>
             <label>Quantity<input type="number" min="1" max="100" step="1" value={r.quantity} onChange={e => update(r.id, "quantity", e.target.value)} /></label>
           </div>
         </div>)}</div>
@@ -282,14 +298,14 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
       </section>
 
       <section className={styles.panel} aria-labelledby="settings-heading">
-        <div className={styles.sectionHeading}><h2 id="settings-heading">3. Optimize mats</h2><p>Uses multiple free-space layouts across the whole batch to reduce mat count and fill gaps.</p></div>
+        <div className={styles.sectionHeading}><h2 id="settings-heading">3. Optimize mats</h2><p>Text flows in content order, trying horizontal, then 90° rotation, then wrapping. Customer images fill the available spaces.</p></div>
         <div className={styles.settings}>
           <label>Vinyl mat size<select value={matSize} onChange={e => { setMatSize(e.target.value as MatSize); invalidate(); }}>
             <option value="short">11 × 16 cm</option><option value="long">11 × 30 cm</option>
           </select><small>Joy cuttable area: {(MAT_SIZES[matSize].cutWidth / 10).toFixed(3)} × {(MAT_SIZES[matSize].cutHeight / 10).toFixed(3)} cm</small></label>
           <label>Order number (optional)<input type="text" maxLength={40} value={orderNumber} placeholder="e.g. PJ100001" onChange={e => setOrderNumber(e.target.value)} /></label>
           <label>Safe spacing (mm)<input type="number" min="0" max="10" step="0.5" value={spacing} onChange={e => { setSpacing(e.target.value); invalidate(); }} /></label>
-          <label className={styles.check}><input type="checkbox" checked={allowRotation} onChange={e => { setAllowRotation(e.target.checked); invalidate(); }} /> Allow 90° rotation</label>
+          <label className={styles.check}><input type="checkbox" checked={allowRotation} onChange={e => { setAllowRotation(e.target.checked); invalidate(); }} /> Allow 90° rotation for text and images</label>
         </div>
         <div className={styles.actions}>
           <button type="button" className={styles.primary} disabled={working || !!artworkBusy} onClick={() => { void optimize(false); }}>{working ? "Preparing cut outlines…" : "Generate mats"}</button>
@@ -321,10 +337,10 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
                 return <g key={i} transform={path.transform}><path d={path.d} fill="#211b18" fillRule={p.design.fillRule || "nonzero"} /></g>;
               })}
             </svg></div>
-            <div className={styles.metrics}><div><strong>{mat.placements.length}</strong><span>designs</span></div><div><strong>{percent.toFixed(1)}%</strong><span>bounds utilization</span></div><div><strong>{(100 - percent).toFixed(1)}%</strong><span>estimated waste*</span></div><div><strong>₹{matCuttingCost(mat)}</strong><span>cutting cost*</span></div></div>
+            <div className={styles.metrics}><div><strong>{matDesignCount(mat)}</strong><span>designs</span></div><div><strong>{percent.toFixed(1)}%</strong><span>bounds utilization</span></div><div><strong>{(100 - percent).toFixed(1)}%</strong><span>estimated waste*</span></div><div><strong>₹{matCuttingCost(mat)}</strong><span>cutting cost*</span></div></div>
           </article>;
         })}</div>
-        <p className={styles.note}>* Estimates use each design’s outline bounding rectangle; open letter shapes and unused interior spaces are counted as used. At 1% utilization cutting costs ₹30; at 100%, an 11 × 16 cm mat costs ₹150 and an 11 × 30 cm mat costs ₹300, rounded to the nearest rupee per mat. The exported SVG contains only black vector cut paths and is cropped to the artwork bounds so Design Space does not import an empty page as an oversized image. Relative placement and each design’s dimensions are retained. Verify scale and choose On Mat in Cricut Design Space before cutting.</p>
+        <p className={styles.note}>* Estimates use each cut line’s outline bounding rectangle; open letter shapes and unused interior spaces are counted as used. The requested text width describes the unbroken design: when it exceeds both usable orientations, wrapping preserves its original letter scale while changing the final layout width. At 1% utilization cutting costs ₹30; at 100%, an 11 × 16 cm mat costs ₹150 and an 11 × 30 cm mat costs ₹300, rounded to the nearest rupee per mat. The exported SVG contains only black vector cut paths and is cropped to the artwork bounds so Design Space does not import an empty page as an oversized image. Verify scale and choose On Mat in Cricut Design Space before cutting.</p>
       </section>}
     </div>
   </div>;
