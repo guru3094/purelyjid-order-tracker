@@ -96,19 +96,68 @@ export function extractOutline(svg: string): Outline {
   if (viewBox.length !== 4 || viewBox.some(v => !Number.isFinite(v)) || viewBox[2] <= 0 || viewBox[3] <= 0) {
     throw new Error("Canva returned a vector page without valid dimensions.");
   }
-  const paths: string[] = [];
-  let rule: "nonzero" | "evenodd" | null = null;
-  function visit(node: XmlElement, parentTransforms: string[]) {
+  const clipDefinitions = new Map<string, string[]>();
+  // The PDF converter stores clipping outlines in <defs>. They are vectors,
+  // but are not themselves cut shapes; resolve only internal clipPath paths.
+  function readClip(node: XmlElement, transforms: string[]): string[] {
     const tag = node.localName || node.tagName;
-    if (["title", "desc", "metadata"].includes(tag)) return;
-    if (tag === "defs" && node.getElementsByTagName("*").length === 0) return;
+    if (tag !== "clipPath" && tag !== "g" && tag !== "path") {
+      throw new Error(`Canva export contains an unsupported ${tag} clipping definition.`);
+    }
+    const own = node.hasAttribute("transform") ? [node.getAttribute("transform")!, ...transforms] : transforms;
+    if (tag === "path") {
+      const data = node.getAttribute("d") || "";
+      if (!data || !/[zZ]/.test(data)) throw new Error("Canva returned an open clipping path.");
+      let transformed = svgpath(data);
+      for (const transform of own) transformed = transformed.transform(transform);
+      return [transformed.abs().round(5).toString()];
+    }
+    const result: string[] = [];
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType === 1) result.push(...readClip(child as XmlElement, own));
+    }
+    return result;
+  }
+  for (let child = root.firstChild; child; child = child.nextSibling) {
+    if (child.nodeType !== 1 || (child as XmlElement).localName !== "defs") continue;
+    for (let entry = child.firstChild; entry; entry = entry.nextSibling) {
+      if (entry.nodeType !== 1) continue;
+      const definition = entry as XmlElement;
+      if (definition.localName !== "clipPath" ||
+          (definition.hasAttribute("clipPathUnits") && definition.getAttribute("clipPathUnits") !== "userSpaceOnUse")) {
+        throw new Error("Canva export contains a definition that cannot be turned into a cut outline.");
+      }
+      const id = definition.getAttribute("id") || "";
+      if (!/^[A-Za-z_][\w.-]*$/.test(id) || clipDefinitions.has(id)) throw new Error("Canva returned an invalid clipping definition.");
+      const parts = readClip(definition, []);
+      if (!parts.length) throw new Error("Canva returned an empty clipping definition.");
+      clipDefinitions.set(id, parts);
+    }
+  }
+  const paths: { data: string; clips: string[] }[] = [];
+  let rule: "nonzero" | "evenodd" | null = null;
+  function visit(node: XmlElement, parentTransforms: string[], parentClips: string[]) {
+    const tag = node.localName || node.tagName;
+    if (["title", "desc", "metadata", "defs"].includes(tag)) return;
     if (tag !== "svg" && tag !== "g" && tag !== "path") {
       throw new Error(`Canva export contains ${tag} rather than text outlines. Remove effects/backgrounds from the font template.`);
     }
-    if (node.hasAttribute("clip-path") || node.hasAttribute("mask") || node.hasAttribute("filter") || node.hasAttribute("opacity")) {
-      throw new Error("Canva export contains clipping or effects that cannot be safely used as cut paths.");
+    if (node.hasAttribute("mask") || node.hasAttribute("filter") || node.hasAttribute("opacity")) {
+      throw new Error("Canva export contains effects that cannot be safely used as cut paths.");
     }
     const transforms = node.hasAttribute("transform") ? [node.getAttribute("transform")!, ...parentTransforms] : parentTransforms;
+    let clips = parentClips;
+    if (node.hasAttribute("clip-path")) {
+      const match = /^url\(#([A-Za-z_][\w.-]*)\)$/.exec((node.getAttribute("clip-path") || "").trim());
+      const definition = match && clipDefinitions.get(match[1]);
+      if (!definition) throw new Error("Canva export contains an unsupported clipping reference.");
+      const transformed = definition.map(data => {
+        let path = svgpath(data);
+        for (const transform of transforms) path = path.transform(transform);
+        return path.abs().round(5).toString();
+      });
+      clips = [...parentClips, weldGlyphs(transformed)];
+    }
     if (tag === "path") {
       const data = node.getAttribute("d") || "";
       if (!data || !/[zZ]/.test(data)) throw new Error("Canva returned an open or empty path.");
@@ -129,16 +178,39 @@ export function extractOutline(svg: string): Outline {
       const pathRule = node.getAttribute("fill-rule") === "evenodd" ? "evenodd" : "nonzero";
       if (rule && rule !== pathRule) throw new Error("Canva returned mixed fill rules that cannot be merged into one cut design.");
       rule = pathRule;
-      paths.push(transformed.toString());
+      paths.push({ data: transformed.toString(), clips });
       return;
     }
     for (let child = node.firstChild; child; child = child.nextSibling) {
-      if (child.nodeType === 1) visit(child as XmlElement, transforms);
+      if (child.nodeType === 1) visit(child as XmlElement, transforms, clips);
     }
   }
-  visit(root, []);
+  visit(root, [], []);
   if (!paths.length) throw new Error("Canva returned no cut paths for this text.");
-  const path = weldGlyphs(paths);
+  const groups = new Map<string, { parts: string[]; clips: string[] }>();
+  for (const item of paths) {
+    const key = JSON.stringify(item.clips);
+    if (!groups.has(key)) groups.set(key, { parts: [], clips: item.clips });
+    groups.get(key)!.parts.push(item.data);
+  }
+  const visible: string[] = [];
+  for (const group of groups.values()) {
+    let path = weldGlyphs(group.parts);
+    for (const clip of group.clips) {
+      const scope = new paper.PaperScope();
+      scope.setup(new scope.Size(1, 1));
+      try {
+        const clipped = new scope.CompoundPath(path).intersect(new scope.CompoundPath(clip), { insert: false });
+        path = clipped.pathData || "";
+      } finally {
+        scope.project.remove();
+      }
+      if (!path) break;
+    }
+    if (path) visible.push(path);
+  }
+  if (!visible.length) throw new Error("Canva clipped all of the text outside the visible page.");
+  const path = visible.length === 1 ? visible[0] : weldGlyphs(visible);
   const [x1, y1, x2, y2] = svgPathBbox(path);
   if (![x1, y1, x2, y2].every(Number.isFinite) || x2 <= x1 || y2 <= y1) throw new Error("Canva returned invalid outline bounds.");
   return { path, bounds: { x1, y1, x2, y2 }, fillRule: "nonzero" };
