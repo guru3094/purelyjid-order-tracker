@@ -1,8 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import svgpath from "svgpath";
-import { svgPathBbox } from "svg-path-bbox";
 import { MAT_SIZES, matSvg, matUtilization, matCuttingCost, nest, placementPath, type Design, type Mat, type MatSize } from "./nesting";
 import { traceArtwork, type ArtworkOutline } from "./artwork-trace";
 import styles from "./cricut-svg.module.css";
@@ -101,47 +99,24 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
     const maxWidth = MAT_SIZES[matSize].height / 10;
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const text = r.content.replace(/\r\n?/g, "\n").trim();
+      const text = r.content.trim();
       if (!text && !r.width && artworks.length) continue;
       const widthCm = Number(r.width);
       const count = Number(r.quantity);
-      const lines = text.split("\n").map(line => line.trim());
-      if (!text || lines.length > 6 || lines.some(line => !line || line.length > 100)) {
-        throw new Error(`Content ${i + 1}: enter 1–6 nonempty lines, up to 100 characters per line.`);
-      }
+      if (!text || text.length > 100 || /[\r\n]/.test(text)) throw new Error(`Content ${i + 1}: enter one line of text (up to 100 characters).`);
       if (!Number.isFinite(widthCm) || widthCm < 0.1 || widthCm > maxWidth) throw new Error(`Content ${i + 1}: width must be 0.1–${maxWidth} cm for the selected mat.`);
       if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error(`Content ${i + 1}: quantity must be 1–100.`);
-      const outlines: Outline[] = [];
-      for (const line of lines) {
-        const cacheKey = `${r.fontCode}\0${line}`;
-        let outline = outlineCache.current.get(cacheKey);
-        if (!outline) {
-          const response = await fetch("/api/cricut-svg/outlines", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content: line, fontCode: r.fontCode }),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(`Content ${i + 1}: ${data.error || "Canva could not create a cut outline."}`);
-          outline = data as Outline;
-          outlineCache.current.set(cacheKey, outline);
-        }
-        outlines.push(outline);
-      }
-      // Each line is rendered independently with the same Canva font. Center
-      // them as one design; the requested width applies to the widest line.
-      let outline = outlines[0];
-      if (outlines.length > 1) {
-        const widths = outlines.map(o => o.bounds.x2 - o.bounds.x1);
-        const heights = outlines.map(o => o.bounds.y2 - o.bounds.y1);
-        const widest = Math.max(...widths);
-        const tallest = Math.max(...heights);
-        const advance = tallest * 1.35;
-        const path = outlines.map((o, index) => svgpath(o.path).translate(
-          (widest - widths[index]) / 2 - o.bounds.x1,
-          index * advance + (tallest - heights[index]) / 2 - o.bounds.y1,
-        ).toString()).join(" ");
-        const [x1, y1, x2, y2] = svgPathBbox(path);
-        outline = { path, bounds: { x1, y1, x2, y2 }, fillRule: "nonzero" };
+      const cacheKey = `${r.fontCode}\0${text}`;
+      let outline = outlineCache.current.get(cacheKey);
+      if (!outline) {
+        const response = await fetch("/api/cricut-svg/outlines", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: text, fontCode: r.fontCode }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(`Content ${i + 1}: ${data.error || "Canva could not create a cut outline."}`);
+        outline = data as Outline;
+        outlineCache.current.set(cacheKey, outline);
       }
       // Canva's rendered ink bounds establish the exact physical width.
       const b = outline.bounds;
@@ -264,11 +239,11 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
       </section>
 
       <section className={styles.panel} aria-labelledby="content-heading">
-        <div className={styles.sectionHeading}><h2 id="content-heading">2. Enter contents</h2><p>Enter up to six lines per design. The requested width is measured across the widest visible line; all lines stay together on one mat.</p></div>
+        <div className={styles.sectionHeading}><h2 id="content-heading">2. Enter contents</h2><p>Width is the final visible design width, measured across the font outlines.</p></div>
         <div className={styles.rows}>{rows.map((r, index) => <div className={styles.row} key={r.id}>
           <div className={styles.rowTitle}><strong>Content {index + 1}</strong><button className={styles.textButton} type="button" disabled={rows.length === 1} onClick={() => { setRows(old => old.filter(x => x.id !== r.id)); invalidate(); }}>Remove</button></div>
           <div className={styles.fields}>
-            <label className={styles.contentField}>Text / content (one line per row)<textarea value={r.content} rows={3} maxLength={605} placeholder={"Happy Birthday\nDear Mom\nWith Love"} onChange={e => update(r.id, "content", e.target.value)} /></label>
+            <label className={styles.contentField}>Text / content<input value={r.content} maxLength={100} placeholder="e.g. Happy Birthday" onChange={e => update(r.id, "content", e.target.value)} /></label>
             <label>Font<select value={r.fontCode} onChange={e => update(r.id, "fontCode", e.target.value)}>{FONTS.map(([code, name]) => <option key={code} value={code}>{code} – {name}</option>)}</select></label>
             <label>Width (cm)<input type="number" min="0.1" max={MAT_SIZES[matSize].height / 10} step="0.1" value={r.width} placeholder="5.0" onChange={e => update(r.id, "width", e.target.value)} /></label>
             <label>Quantity<input type="number" min="1" max="100" step="1" value={r.quantity} onChange={e => update(r.id, "quantity", e.target.value)} /></label>
