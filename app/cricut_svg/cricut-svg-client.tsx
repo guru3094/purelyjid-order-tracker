@@ -237,7 +237,7 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
       </section>
 
       <section className={styles.panel} aria-labelledby="content-heading">
-        <div className={styles.sectionHeading}><h2 id="content-heading">2. Enter contents</h2><p>Width is the final visible design width, measured across the font outlines.</p></div>
+        <div className={styles.sectionHeading}><h2 id="content-heading">2. Enter contents</h2><p>Width applies to the complete content, including all its words. Words in one content stay on one cut line.</p></div>
         <div className={styles.rows}>{rows.map((r, index) => <div className={styles.row} key={r.id}>
           <div className={styles.rowTitle}><strong>Content {index + 1}</strong><button className={styles.textButton} type="button" disabled={rows.length === 1} onClick={() => { setRows(old => old.filter(x => x.id !== r.id)); invalidate(); }}>Remove</button></div>
           <div className={styles.fields}>

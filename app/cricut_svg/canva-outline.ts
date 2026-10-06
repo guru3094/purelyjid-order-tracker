@@ -3,6 +3,7 @@ import svgpath from "svgpath";
 import { svgPathBbox } from "svg-path-bbox";
 import paper from "paper";
 import { getValidCanvaAccessToken } from "@/lib/canva/oauth";
+import { placeWordsOnOneLine } from "./word-layout";
 
 const API = "https://api.canva.com/rest/v1";
 const PAGE: Record<string, number> = { PF01: 1, PF02: 2, PF03: 3, PF04: 4, PF05: 5, PF06: 6, PF07: 7, PF08: 8 };
@@ -129,11 +130,10 @@ export function extractOutline(svg: string): Outline {
   return { path, bounds: { x1, y1, x2, y2 }, fillRule: rule || "nonzero" };
 }
 
-export async function generateCanvaOutline(content: string, fontCode: string): Promise<Outline> {
+async function renderCanvaOutline(content: string, fontCode: string, token: string): Promise<Outline> {
   const page = PAGE[fontCode];
   const designId = process.env.CANVA_VINYL_DESIGN_ID;
   if (!page || !designId) throw new Error("The Canva vinyl font template is not configured for this font.");
-  const token = await getValidCanvaAccessToken();
   // The existing template has VINYL_TEXT on all eight pages, one text object on each.
   const job = await canva<Job>(token, "/autofills", {
     type: "create_from_design", design_id: designId,
@@ -181,4 +181,21 @@ export async function generateCanvaOutline(content: string, fontCode: string): P
     throw new Error("Canva PDF did not provide complete vector font outlines. Remove effects or use a different font page.");
   }
   return extractOutline(vector.svg);
+}
+
+export async function generateCanvaOutline(content: string, fontCode: string): Promise<Outline> {
+  const token = await getValidCanvaAccessToken();
+  const words = content.trim().split(/\s+/u);
+  if (words.length === 1) return renderCanvaOutline(content, fontCode, token);
+  // The fixed Canva template wraps at spaces before our requested physical
+  // width is applied. Export each distinct word and compose a single vector
+  // line; keep calls bounded to avoid flooding Canva's asynchronous jobs.
+  const unique = [...new Set(words)];
+  const outlines = new Map<string, Outline>();
+  for (let index = 0; index < unique.length; index += 3) {
+    const batch = unique.slice(index, index + 3);
+    const rendered = await Promise.all(batch.map(word => renderCanvaOutline(word, fontCode, token)));
+    batch.forEach((word, i) => outlines.set(word, rendered[i]));
+  }
+  return placeWordsOnOneLine(words.map(word => outlines.get(word)!));
 }
