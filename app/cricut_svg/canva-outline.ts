@@ -9,32 +9,47 @@ const PAGE: Record<string, number> = { PF01: 1, PF02: 2, PF03: 3, PF04: 4, PF05:
 type Job = { job?: { id?: string; status?: string; result?: { design?: { id?: string } }; urls?: string[]; error?: { message?: string } } };
 type Outline = { path: string; bounds: { x1: number; y1: number; x2: number; y2: number }; fillRule: "nonzero" | "evenodd" };
 
-// Script letters can overlap in Canva. Cricut otherwise cuts the shared edges
-// inside the word. Unite each glyph's filled shape while keeping its counters.
-function weldGlyphs(pathData: string): string {
+// Script letters can overlap in Canva. Weld the filled glyphs but determine
+// counters by contour containment, not by the winding of the largest symbol.
+// A solid heart can wind opposite to the letters without filling their holes.
+function weldGlyphs(pathData: string[]): string {
   const scope = new paper.PaperScope();
   scope.setup(new scope.Size(1, 1));
   try {
-    const source = new scope.CompoundPath(pathData);
-    const contours = source.children as paper.Path[];
-    if (!contours.length) throw new Error("Canva returned no closed glyph contours.");
-    const outer = contours.reduce((largest, contour) =>
-      Math.abs(contour.area) > Math.abs(largest.area) ? contour : largest);
-    const outerSign = Math.sign(outer.area);
-    if (!outerSign) throw new Error("Canva returned a zero-area glyph contour.");
     const glyphs: paper.CompoundPath[] = [];
-    let glyph: paper.CompoundPath | undefined;
-    for (const contour of contours) {
-      if (Math.sign(contour.area) === outerSign) {
-        glyph = new scope.CompoundPath("");
-        glyph.addChild(contour.clone());
-        glyphs.push(glyph);
-      } else if (glyph) {
-        glyph.addChild(contour.clone());
-      } else {
-        throw new Error("Canva returned a counter without a letter outline.");
+    const contours = pathData.flatMap(data => [...new scope.CompoundPath(data).children] as paper.Path[]);
+    const parents = contours.map((contour, index) => {
+      const area = Math.abs(contour.area);
+      if (area < 1e-8) throw new Error("Canva returned a zero-area glyph contour.");
+      let parent = -1;
+      let parentArea = Infinity;
+      for (let other = 0; other < contours.length; other++) {
+        if (other === index || Math.abs(contours[other].area) <= area ||
+            !contours[other].bounds.contains(contour.bounds)) continue;
+        const point = contour.getPointAt(contour.length * 0.25);
+        if (point && contours[other].contains(point) && Math.abs(contours[other].area) < parentArea) {
+          parent = other;
+          parentArea = Math.abs(contours[other].area);
+        }
       }
+      return parent;
+    });
+    const depth = (index: number): number => parents[index] < 0 ? 0 : 1 + depth(parents[index]);
+    for (let i = 0; i < contours.length; i++) {
+      if (depth(i) % 2) continue;
+      const glyph = new scope.CompoundPath("");
+      const outer = contours[i].clone();
+      if (outer.area < 0) outer.reverse();
+      glyph.addChild(outer);
+      for (let j = 0; j < contours.length; j++) {
+        if (parents[j] !== i || depth(j) % 2 !== 1) continue;
+        const hole = contours[j].clone();
+        if (hole.area > 0) hole.reverse();
+        glyph.addChild(hole);
+      }
+      glyphs.push(glyph);
     }
+    if (!glyphs.length) throw new Error("Canva returned no closed glyph contours.");
     let welded: paper.PathItem = glyphs[0];
     for (const next of glyphs.slice(1)) {
       const joined = welded.unite(next, { insert: false });
@@ -123,10 +138,10 @@ export function extractOutline(svg: string): Outline {
   }
   visit(root, []);
   if (!paths.length) throw new Error("Canva returned no cut paths for this text.");
-  const path = weldGlyphs(paths.join(" "));
+  const path = weldGlyphs(paths);
   const [x1, y1, x2, y2] = svgPathBbox(path);
   if (![x1, y1, x2, y2].every(Number.isFinite) || x2 <= x1 || y2 <= y1) throw new Error("Canva returned invalid outline bounds.");
-  return { path, bounds: { x1, y1, x2, y2 }, fillRule: rule || "nonzero" };
+  return { path, bounds: { x1, y1, x2, y2 }, fillRule: "nonzero" };
 }
 
 export async function generateCanvaOutline(content: string, fontCode: string): Promise<Outline> {

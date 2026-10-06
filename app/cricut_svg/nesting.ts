@@ -1,11 +1,12 @@
 import svgpath from "svgpath";
 import { svgPathBbox } from "svg-path-bbox";
 
-export const MAT_W = 110; // millimetres
-export const MAT_H = 160;
-// Cricut Joy's 4.5 × 6.5 in mat has a smaller actual cutting area.
-export const CUT_W = 107.95;
-export const CUT_H = 158.75;
+// Physical mat dimensions and the smaller cutting areas supported by Cricut Joy.
+export const MAT_SIZES = {
+  short: { width: 110, height: 160, cutWidth: 107.95, cutHeight: 158.75, maxPrice: 150, label: "11 × 16 cm" },
+  long: { width: 110, height: 300, cutWidth: 107.95, cutHeight: 298.45, maxPrice: 300, label: "11 × 30 cm" },
+} as const;
+export type MatSize = keyof typeof MAT_SIZES;
 
 export type Design = {
   id: string;
@@ -21,7 +22,7 @@ export type Design = {
 };
 
 export type Placement = { design: Design; x: number; y: number; rotated: boolean; width: number; height: number };
-export type Mat = { placements: Placement[]; free: Rect[] };
+export type Mat = { size: MatSize; placements: Placement[]; free: Rect[] };
 type Rect = { x: number; y: number; w: number; h: number };
 type Candidate = { mat: number; free: Rect; rotated: boolean; width: number; height: number; score: number };
 const EPS = 1e-7;
@@ -82,10 +83,11 @@ function initialOrder(designs: Design[], attempt: number, seed: number) {
   });
 }
 
-function build(order: Design[], spacing: number, rotation: boolean, heuristic: number): Mat[] {
+function build(order: Design[], spacing: number, rotation: boolean, heuristic: number, size: MatSize): Mat[] {
   const mats: Mat[] = [];
-  const usableW = CUT_W - spacing;
-  const usableH = CUT_H - spacing;
+  const profile = MAT_SIZES[size];
+  const usableW = profile.cutWidth - spacing;
+  const usableH = profile.cutHeight - spacing;
   for (const design of order) {
     let best: Candidate | null = null;
     // Try every orientation in every mat, including a new mat. No row/shelf constraint.
@@ -106,8 +108,8 @@ function build(order: Design[], spacing: number, rotation: boolean, heuristic: n
         if (!best || score < best.score) best = { mat: mi, free, rotated, width, height, score };
       }
     }
-    if (!best) throw new Error(`“${design.content}” cannot fit in Cricut Joy's 10.795 × 15.875 cm cutting area at its requested width, even with the selected rotation setting.`);
-    if (best.mat === mats.length) mats.push({ placements: [], free: [{ x: 0, y: 0, w: usableW, h: usableH }] });
+    if (!best) throw new Error(`“${design.content}” cannot fit in the selected ${profile.label} mat's ${(profile.cutWidth / 10).toFixed(3)} × ${(profile.cutHeight / 10).toFixed(3)} cm cutting area at its requested width, even with the selected rotation setting.`);
+    if (best.mat === mats.length) mats.push({ size, placements: [], free: [{ x: 0, y: 0, w: usableW, h: usableH }] });
     const x = best.free.x;
     const y = best.free.y;
     occupy(mats[best.mat], { x, y, w: best.width, h: best.height });
@@ -128,14 +130,15 @@ function fitness(mats: Mat[]) {
   return mats.length * 1e9 + footprint;
 }
 
-export function nest(designs: Design[], spacing: number, rotation: boolean, seed = 1): Mat[] {
+export function nest(designs: Design[], spacing: number, rotation: boolean, seed = 1, size: MatSize = "short"): Mat[] {
   if (!designs.length) return [];
+  if (!MAT_SIZES[size]) throw new Error("Select a supported Cricut mat size.");
   if (!Number.isFinite(spacing) || spacing < 0 || spacing > 10) throw new Error("Safe spacing must be between 0 and 10 mm.");
   if (designs.length > 250) throw new Error("Limit this batch to 250 individual designs.");
   let best: Mat[] | null = null;
   const attempts = designs.length < 35 ? 72 : 36;
   for (let i = 0; i < attempts; i++) {
-    const candidate = build(initialOrder(designs, i, seed), spacing, rotation, i);
+    const candidate = build(initialOrder(designs, i, seed), spacing, rotation, i, size);
     if (!best || fitness(candidate) < fitness(best)) best = candidate;
   }
   return best!;
@@ -143,13 +146,14 @@ export function nest(designs: Design[], spacing: number, rotation: boolean, seed
 
 export function matUtilization(mat: Mat) {
   // Conservative rectangle coverage, since actual path area may have holes.
-  return mat.placements.reduce((area, p) => area + p.width * p.height, 0) / (MAT_W * MAT_H) * 100;
+  const profile = MAT_SIZES[mat.size];
+  return mat.placements.reduce((area, p) => area + p.width * p.height, 0) / (profile.width * profile.height) * 100;
 }
 
 export function matCuttingCost(mat: Mat) {
   if (!mat.placements.length) return 0;
   const utilization = Math.max(1, Math.min(100, matUtilization(mat)));
-  return Math.round(30 + 120 * (utilization - 1) / 99);
+  return Math.round(30 + (MAT_SIZES[mat.size].maxPrice - 30) * (utilization - 1) / 99);
 }
 
 export function placementPath(p: Placement) {
@@ -163,6 +167,7 @@ function escapeXml(text: string) {
 }
 
 export function matSvg(mat: Mat) {
+  const profile = MAT_SIZES[mat.size];
   const cuts = [...mat.placements].sort((a, b) => a.design.sequence - b.design.sequence).map((p, index) => {
     const { transform, d } = placementPath(p);
     // Bake every position, rotation and scale into the path itself. Some cut
@@ -170,7 +175,7 @@ export function matSvg(mat: Mat) {
     const cutPath = svgpath(d).transform(transform).abs().round(5).toString();
     const [x1, y1, x2, y2] = svgPathBbox(cutPath);
     if (![x1, y1, x2, y2].every(Number.isFinite) ||
-        x1 < -0.01 || y1 < -0.01 || x2 > CUT_W + 0.01 || y2 > CUT_H + 0.01) {
+        x1 < -0.01 || y1 < -0.01 || x2 > profile.cutWidth + 0.01 || y2 > profile.cutHeight + 0.01) {
       throw new Error(`Design ${index + 1} extends beyond Cricut Joy's cutting area.`);
     }
     return { placement: p, path: cutPath, bounds: { x1, y1, x2, y2 }, index };
@@ -180,7 +185,7 @@ export function matSvg(mat: Mat) {
   const top = Math.min(...cuts.map(c => c.bounds.y1));
   const width = Math.max(...cuts.map(c => c.bounds.x2)) - left;
   const height = Math.max(...cuts.map(c => c.bounds.y2)) - top;
-  if (width > CUT_W + 0.01 || height > CUT_H + 0.01 || width <= 0 || height <= 0) {
+  if (width > profile.cutWidth + 0.01 || height > profile.cutHeight + 0.01 || width <= 0 || height <= 0) {
     throw new Error("The cut layout exceeds Cricut Joy's cutting area.");
   }
   // Design Space imports the SVG's canvas size as the image size. Use only the
