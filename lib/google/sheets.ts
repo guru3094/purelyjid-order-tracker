@@ -83,7 +83,8 @@ export async function appendOrderToSheet(input: CreateSheetOrderInput) {
   await sheets.spreadsheets.values.append({
     spreadsheetId: config.google.sheetId,
     range: "Orders!A:S",
-    valueInputOption: "USER_ENTERED",
+    // Preserve date/time strings exactly like the historical rows; avoid Sheets auto-converting them to serial numbers.
+    valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: [row] },
   });
