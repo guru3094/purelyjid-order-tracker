@@ -13,12 +13,56 @@ type Point = { x: number; y: number };
 type Edge = { start: Point; end: Point; direction: number };
 const key = ({ x, y }: Point) => `${x},${y}`;
 
+// Simplify each half of a closed contour separately. Unlike averaging or
+// splines, bounded line simplification keeps real corners sharp.
+function simplifyContour(points: Point[], tolerance: number): Point[] {
+  if (points.length < 4) return points;
+  const distanceSquared = (p: Point, a: Point, b: Point) => {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const t = dx || dy ? Math.max(0, Math.min(1, ((p.x-a.x)*dx + (p.y-a.y)*dy)/(dx*dx+dy*dy))) : 0;
+    return (p.x-a.x-t*dx)**2 + (p.y-a.y-t*dy)**2;
+  };
+  const simplify = (chain: Point[]) => {
+    const keep = new Set([0, chain.length - 1]);
+    const stack = [[0, chain.length - 1]];
+    while (stack.length) {
+      const [start, end] = stack.pop()!;
+      let farthest = -1, maximum = tolerance * tolerance;
+      for (let i = start + 1; i < end; i++) {
+        const distance = distanceSquared(chain[i], chain[start], chain[end]);
+        if (distance > maximum) { maximum = distance; farthest = i; }
+      }
+      if (farthest >= 0) {
+        keep.add(farthest); stack.push([start, farthest], [farthest, end]);
+      }
+    }
+    return [...keep].sort((a, b) => a-b).map(i => chain[i]);
+  };
+  let split = 1;
+  for (let i = 2; i < points.length; i++) {
+    if (distanceSquared(points[i], points[0], points[0]) > distanceSquared(points[split], points[0], points[0])) split = i;
+  }
+  const result = [...simplify(points.slice(0, split+1)).slice(0, -1),
+    ...simplify([...points.slice(split), points[0]]).slice(0, -1)];
+  // Fall back if simplification collapses a loop, reverses its winding,
+  // or changes its area by more than five percent.
+  const area = (polygon: Point[]) => polygon.reduce((sum, p, i) => {
+    const q = polygon[(i+1)%polygon.length]; return sum + p.x*q.y-q.x*p.y;
+  }, 0);
+  const originalArea = area(points), simplifiedArea = area(result);
+  return result.length >= 3 && originalArea * simplifiedArea > 0 &&
+    Math.abs(simplifiedArea/originalArea - 1) <= .05 ? result : points;
+}
+
 export async function traceArtwork(file: Blob, threshold: number, invert: boolean, minArea: number): Promise<ArtworkOutline> {
   const bitmap = await createImageBitmap(file);
   try {
-    const size = Math.min(1, 650 / Math.max(bitmap.width, bitmap.height));
+    const size = Math.min(1, 1300 / Math.max(bitmap.width, bitmap.height));
     const width = Math.max(1, Math.round(bitmap.width * size));
     const height = Math.max(1, Math.round(bitmap.height * size));
+    // Keep the existing tiny-shape setting equivalent to its 650px preview.
+    const detailScale = Math.max(1, Math.max(width, height) / 650);
+    const minimumArea = minArea * detailScale * detailScale;
     const canvas = document.createElement("canvas");
     canvas.width = width; canvas.height = height;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -81,7 +125,7 @@ export async function traceArtwork(file: Blob, threshold: number, invert: boolea
     }
     // Positive loops bound foreground islands; negative loops bound their holes.
     // Removing a tiny island must remove its holes as well.
-    const retainedIslands = loops.filter(loop => loop.signedArea > 0 && loop.signedArea >= minArea);
+    const retainedIslands = loops.filter(loop => loop.signedArea > 0 && loop.signedArea >= minimumArea);
     const inside = (point: Point, polygon: Point[]) => {
       let enclosed = false;
       for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -90,10 +134,12 @@ export async function traceArtwork(file: Blob, threshold: number, invert: boolea
       }
       return enclosed;
     };
+    // The same configured noise threshold applies to islands and interior specks.
+    // Setting it to zero preserves even the smallest intentional holes.
     const paths = loops.filter(loop => loop.signedArea > 0
-      ? loop.signedArea >= minArea
-      : retainedIslands.some(island => inside(loop.corners[0], island.corners)))
-      .map(loop => `M${loop.corners.map(p => `${p.x} ${p.y}`).join("L")}Z`);
+      ? loop.signedArea >= minimumArea
+      : Math.abs(loop.signedArea) >= minimumArea && retainedIslands.some(island => inside(loop.corners[0], island.corners)))
+      .map(loop => `M${simplifyContour(loop.corners, .8 * detailScale).map(p => `${p.x} ${p.y}`).join("L")}Z`);
     if (!paths.length) throw new Error("No cut shape was found. Try a different threshold or request a clearer image.");
     const path = paths.join("");
     const [x1, y1, x2, y2] = svgPathBbox(path);
