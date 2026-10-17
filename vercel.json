@@ -7,6 +7,17 @@
   ],
   "redirects": [
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "purelyjid-order-tracker\\.vercel\\.app"
+        }
+      ],
+      "destination": "https://www.purelyjid.in/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [
         {
