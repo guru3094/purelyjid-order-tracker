@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import BrandLogo from "@/components/branding/BrandLogo";
+import Image from "next/image";
 
 export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -10,16 +10,18 @@ export default function SiteHeader() {
   const closeMenu = () => setMenuOpen(false);
 
   return (
-    <header className="site-header">
+    <header className="site-header studio-header">
       <div className="site-announcement">PUNE MADE · CRAFTED WITH PURPOSE <span>Personal pieces for the moments that matter.</span></div>
       <div className="site-shell header-inner">
-        <div className="header-brand">
-          <BrandLogo priority />
-
-          <span className="header-tagline">
-            Resin Art • Supplies • Workshops
+        <Link className="studio-brand" href="/" aria-label="PurelyJid home">
+          <span className="studio-brand-mark">
+            <Image src="/purelyjid-logo.png" alt="" width={72} height={72} priority sizes="(max-width: 620px) 48px, 64px" />
           </span>
-        </div>
+          <span className="studio-brand-copy">
+            <span className="studio-brand-name">Purely<span>Jid</span></span>
+            <span className="studio-brand-services">Resin Art <i aria-hidden="true">·</i> Supplies <i aria-hidden="true">·</i> Workshops</span>
+          </span>
+        </Link>
 
         <nav className="desktop-nav" aria-label="Primary navigation">
           <Link href="/#collections">Collections</Link>

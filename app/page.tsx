@@ -40,7 +40,7 @@ export default function HomePage() {
           </div>
           <span className="hero-editorial-note">Wedding keepsakes · Custom gifts · Creative experiences</span>
         </div>
-        <div className="hero-image-wrap"><Image src="/hero.jpg" alt="Handcrafted resin art" fill priority sizes="(max-width: 900px) 100vw, 48vw" className="hero-image" /><span>The keepsake edit · PurelyJid studio</span></div>
+        <div className="hero-image-wrap"><Image src="/hero.jpg" alt="Handcrafted resin art" fill priority sizes="(max-width: 900px) 100vw, 48vw" className="hero-image" /></div>
       </section>
 
       <section className="stats-strip">
