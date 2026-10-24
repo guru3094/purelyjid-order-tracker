@@ -5,6 +5,9 @@ import { MAT_W, MAT_H, matSvg, matUtilization, matCuttingCost, nest, placementPa
 import { traceArtwork, type ArtworkOutline } from "./artwork-trace";
 import { scaledArtworkSize, formatArtworkCm, type ArtworkSizeMode, type ArtworkBounds } from "./artwork-size";
 import styles from "./cricut-svg.module.css";
+import DesignCatalogue from "@/components/vinyl/DesignCatalogue";
+import SelectedDesigns from "@/components/vinyl/SelectedDesigns";
+import { validateSelection, type CatalogueSelection, type CutOutline } from "@/lib/vinyl/catalogue-types";
 
 const FONTS = [
   ["PF01", "Style Casual"], ["PF02", "Nexa Script"], ["PF03", "Style Script"],
@@ -34,6 +37,7 @@ function download(blob: Blob, filename: string) {
 
 export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOrderNumber?: string }) {
   const [rows, setRows] = useState<Row[]>([row()]);
+  const [catalogueItems, setCatalogueItems] = useState<CatalogueSelection[]>([]);
   const [artworks, setArtworks] = useState<ArtworkRow[]>([]);
   const [artworkBusy, setArtworkBusy] = useState("");
   const outlineCache = useRef(new Map<string, Outline>());
@@ -113,7 +117,7 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const text = r.content.trim();
-      if (!text && !r.width && artworks.length) continue;
+      if (!text && !r.width && (artworks.length || catalogueItems.length)) continue;
       const widthCm = Number(r.width);
       const count = Number(r.quantity);
       if (!text || text.length > 100 || /[\r\n]/.test(text)) throw new Error(`Content ${i + 1}: enter one line of text (up to 100 characters).`);
@@ -162,7 +166,19 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
       for (let j = 0; j < count; j++) designs.push({ ...design, sequence: designs.length });
       if (designs.length > 250) throw new Error("Limit this batch to 250 individual designs.");
     }
-    if (!designs.length) throw new Error("Add at least one text design or customer image.");
+    for (const item of catalogueItems) {
+      validateSelection(item);
+      const response = await fetch(`/api/vinyl-designs/${item.design.id}`, { cache: "no-store" });
+      const result = await response.json() as { outline?: CutOutline; error?: string };
+      if (!response.ok || !result.outline) throw new Error(`${item.design.code}: ${result.error || "Design unavailable."}`);
+      const outline = result.outline;
+      const b = outline.bounds;
+      const scale = Number(item.size) * 10 / (item.sizeBy === "width" ? b.x2-b.x1 : b.y2-b.y1);
+      const design: Design = { id: item.id, sequence: 0, content: `${item.design.code} — ${item.design.name}`, fontCode: "CATALOGUE", path: outline.path, fillRule: outline.fillRule, bounds: { x1: b.x1, y1: b.y1 }, scale, width: (b.x2-b.x1)*scale, height: (b.y2-b.y1)*scale };
+      for (let j = 0; j < Number(item.quantity); j++) designs.push({ ...design, sequence: designs.length });
+      if (designs.length > 250) throw new Error("Limit this batch to 250 individual designs.");
+    }
+    if (!designs.length) throw new Error("Add at least one text design, catalogue design or customer image.");
     return designs;
   }
 
@@ -224,6 +240,7 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
       "Cutting contents:",
       ...rows.filter(r => r.content.trim()).map((r, index) => `${index + 1}. ${r.content.trim()} × ${Number(r.quantity)}`),
       ...artworks.map((r, index) => `${index + 1}. Customer Logo or Images: ${r.file?.name || "image"} × ${Number(r.quantity)}`),
+      ...catalogueItems.map(r => `${r.design.code}. ${r.design.name} × ${Number(r.quantity)}${r.color ? ` · ${r.color}` : ""}`),
       `Total cutting cost: ₹${total}`,
     ].join("\n");
     const link = document.createElement("a");
@@ -242,7 +259,7 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
       <header className={styles.header}>
         {/* No navigation to customer vinyl flow: this is a separate staff utility. */}
         <div><span className={styles.eyebrow}>PURELYJID · PRODUCTION</span><h1>Cricut SVG Generator</h1>
-          <p>Arrange Canva text and approved customer image contours on 11 × 16 cm vinyl mats.</p></div>
+          <p>Arrange Canva text, catalogue vectors and approved customer image contours on 11 × 16 cm vinyl mats.</p></div>
         <span className={styles.badge}>Internal tool</span>
       </header>
 
@@ -265,6 +282,12 @@ export default function CricutSvgClient({ initialOrderNumber = "" }: { initialOr
           </div>
         </div>)}</div>
         <button type="button" className={styles.secondary} onClick={() => { setRows(old => [...old, row()]); invalidate(); }}>+ Add content</button>
+      </section>
+
+      <section className={styles.panel} aria-labelledby="catalogue-heading">
+        <div className={styles.sectionHeading}><h2 id="catalogue-heading">Browse Designs</h2><p>Choose an approved vector design by name or code from the customer enquiry. Catalogue artwork uses its original cut paths, without image tracing. Set width or height; exact dimensions are preserved. Colours are reference notes—cut each colour on its matching vinyl.</p><a className={styles.link} href="/sales/vinyl-designs">Manage design catalogue</a></div>
+        <DesignCatalogue disabled={working} onSelect={design => { setCatalogueItems(all => [...all, { id: crypto.randomUUID(), design, sizeBy: "width", size: "5", quantity: "1", color: "" }]); invalidate(); }} />
+        <SelectedDesigns items={catalogueItems} onChange={items => { setCatalogueItems(items); invalidate(); }} disabled={working} />
       </section>
 
       <section className={styles.panel} aria-labelledby="artwork-heading">

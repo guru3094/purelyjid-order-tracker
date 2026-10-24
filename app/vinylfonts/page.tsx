@@ -3,11 +3,13 @@ import SiteHeader from "@/components/homepage/SiteHeader";
 import SiteFooter from "@/components/homepage/SiteFooter";
 import VinylFontSelector from "./VinylFontSelector";
 import CustomerArtworkSelector from "./CustomerArtworkSelector";
+import CustomerDesignCatalogue from "./CustomerDesignCatalogue";
+import catalogueStyles from "@/components/vinyl/catalogue.module.css";
 
 export const metadata: Metadata = {
   title: "Custom Vinyls | PurelyJid",
   description:
-    "Create custom vinyl text with PurelyJid. Choose your text, size, color and font style, then send your final selection on WhatsApp.",
+    "Order custom vinyl text, approved artwork and customer images from PurelyJid. Choose dimensions, colour and quantity, then send your selections on WhatsApp.",
 };
 
 export default function VinylFontsPage() {
@@ -40,8 +42,10 @@ export default function VinylFontsPage() {
           </aside>
         </div>
       </section>
-      <VinylFontSelector />
-      <CustomerArtworkSelector />
+      <nav className={`vinyl-container ${catalogueStyles.links}`} aria-label="Custom vinyl options"><a href="#text-fonts">Text &amp; Fonts</a><a href="#browse-designs">Browse Designs</a><a href="#upload-design">Upload Your Design</a></nav>
+      <div id="text-fonts"><VinylFontSelector /></div>
+      <CustomerDesignCatalogue />
+      <div id="upload-design"><CustomerArtworkSelector /></div>
       <SiteFooter />
     </main>
   );
