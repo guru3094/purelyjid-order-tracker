@@ -1,3 +1,4 @@
+import { readOrdersSheet } from '@/lib/google/sheets';
 import { ApiError } from "@/lib/errors/ApiError";
 import { mapOrderResponse } from "@/lib/mappers/orderResponseMapper";
 import { findOrderForCustomer } from "@/lib/supabase/ordersRepository";
@@ -63,6 +64,15 @@ export async function trackCustomerOrder(
   );
 
   if (!order) {
+    // Store orders retain PJM references and are available before the scheduled Sheet → DB sync.
+    if (/^PJM\d{6,15}$/.test(normalizedOrderId)) {
+      const rows = await readOrdersSheet();
+      const matches = rows.slice(1).filter(r => r[0] === normalizedOrderId && String(r[2] || '').replace(/\D/g, '') === normalizedMobileNumber);
+      if (matches.length === 1) {
+        const r=matches[0];
+        return {success:true,order:{orderId:r[0],customerName:r[1],mobileNumber:r[2],email:r[3]||null,orderDate:r[4]||null,fulfillmentMethod:r[5],status:r[6]||null,courier:r[7]||null,trackingNumber:r[8]||null,expectedDeliveryDate:r[9]||null,remarks:r[10]||null,productName:r[14]||null,productCost:Number(r[15])||0,advancePaid:Number(r[16])||0,balanceToBePaid:Number(r[17])||0,productCategory:r[18]||null,createdAt:'',updatedAt:r[11]||''}};
+      }
+    }
     throw new ApiError(
       "We could not find an order matching the provided details.",
       404

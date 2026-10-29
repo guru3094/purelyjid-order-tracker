@@ -22,8 +22,8 @@ export function validateOrder(order: Order): void {
 
   validateDate(order.lastUpdated);
 
-  validateCourier(
-    order.fulfillmentMethod,
-    order.courierPartner
-  );
+  // An online request is received before a courier has been selected.
+  if (!(order.orderId.startsWith('PJM') && order.status === 'ORDER_RECEIVED' && !order.courierPartner)) {
+    validateCourier(order.fulfillmentMethod, order.courierPartner);
+  }
 }

@@ -46,6 +46,7 @@ export default function StaffNav() {
           Cricut SVG Generator
         </Link>
         <Link className={pathname === "/sales/vinyl-designs" ? "active" : ""} href="/sales/vinyl-designs">Vinyl Design Catalogue</Link>
+        <Link className={pathname === "/sales/couriers" ? "active" : ""} href="/sales/couriers">Courier bookings</Link>
       </nav>
 
       <button

@@ -17,3 +17,7 @@ google-service-account.json
 
 # Google credentials
 credentials/
+
+# Local tooling caches
+supabase/.temp/
+tsconfig.tsbuildinfo
