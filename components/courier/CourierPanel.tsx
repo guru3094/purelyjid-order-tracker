@@ -3,60 +3,76 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 type Delivery = {
   id: string;
   order_ref: string;
+  provider: string;
+  revision: number;
   state: string;
   provider_status: string | null;
   delivery_status: string | null;
   amount: string | null;
   customer_enabled: boolean;
   test: boolean;
+  dispatch_enabled: boolean;
   updated_at: string;
-  points: { address: string; name: string; phone: string; pays: boolean }[];
+  accepted_at: string | null;
+  payment_confirmed_at: string | null;
+  awb: string | null;
+  pickup_date: string | null;
+  pickup_request_id: string | null;
+  points: { address: string; name: string; phone: string }[];
 };
-const subscribeHash = (notify: () => void) => {
+const labels: Record<string, string> = {
+  requested: "Awaiting customer response",
+  accepted: "Accepted · awaiting offline payment",
+  declined: "Declined by customer",
+  payment_confirmed: "Payment confirmed · awaiting shipment creation",
+  submitting: "Checking shipment creation — do not retry",
+  cancelling: "Cancellation is being checked — do not repeat",
+  needs_review: "Staff review required — do not rebook",
+  manifested: "Shipment created · label and pickup scheduling pending",
+  booked: "Pickup scheduled",
+  cancelled: "Cancelled",
+};
+const subscribe = (notify: () => void) => {
   window.addEventListener("hashchange", notify);
   return () => window.removeEventListener("hashchange", notify);
 };
+const button =
+  "my-2 mr-3 rounded-lg bg-slate-900 px-5 py-3 text-white disabled:opacity-40";
 export default function CourierPanel({ staffId }: { staffId?: string }) {
   const [delivery, setDelivery] = useState<Delivery | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [quote, setQuote] = useState<{
-      quote: string;
-      amount: string;
-      test: boolean;
-    } | null>(null),
-    [consent, setConsent] = useState(false),
-    [share, setShare] = useState("");
+    [confirm, setConfirm] = useState(false),
+    [share, setShare] = useState(""),
+    [paymentReference, setPaymentReference] = useState(""),
+    [paidAmount, setPaidAmount] = useState(""),
+    [pickupDate, setPickupDate] = useState("");
   const hash = useSyncExternalStore(
-    subscribeHash,
-    () => window.location.hash,
-    () => "",
-  );
-  const match = hash.match(/^#delivery=([a-f\d-]{36})\.([\w-]{43})$/i);
+      subscribe,
+      () => window.location.hash,
+      () => "",
+    ),
+    match = hash.match(/^#delivery=([a-f\d-]{36})\.([\w-]{43})$/i);
   const id = staffId || match?.[1] || "",
     access = match?.[2] || "";
   useEffect(() => {
     if (!id) return;
-    let active = true;
-    const controller = new AbortController();
+    const c = new AbortController();
     fetch("/api/courier", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, access, action: "view" }),
-      signal: controller.signal,
+      signal: c.signal,
     })
       .then(async (r) => {
         const d = await r.json();
         if (!r.ok) throw Error(d.error);
-        if (active) setDelivery(d);
+        setDelivery(d);
       })
       .catch((e) => {
-        if (active) setError(e.message);
+        if (!c.signal.aborted) setError(e.message);
       });
-    return () => {
-      active = false;
-      controller.abort();
-    };
+    return () => c.abort();
   }, [id, access]);
   async function act(action: string) {
     setBusy(true);
@@ -69,25 +85,25 @@ export default function CourierPanel({ staffId }: { staffId?: string }) {
           id,
           access,
           action,
-          quote: quote?.quote,
-          confirm: consent,
+          revision: delivery?.revision,
+          confirm,
+          paymentReference,
+          paidAmount,
+          pickupDate,
         }),
       });
       const d = await r.json();
       if (!r.ok) throw Error(d.error);
-      if (action === "share") {
+      if (action === "share")
         setShare(new URL(d.link, location.origin).toString());
-      } else if (action === "quote") {
-        setQuote(d);
-        setConsent(false);
-      } else {
-        setDelivery(d);
-        setQuote(null);
-        setConsent(false);
-      }
+      else setDelivery(d);
+      setConfirm(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Please try again.");
-      setQuote(null);
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Request failed. Refresh the latest status before retrying.",
+      );
     } finally {
       setBusy(false);
     }
@@ -103,121 +119,308 @@ export default function CourierPanel({ staffId }: { staffId?: string }) {
       )}
       {delivery && (
         <>
-          <p className="my-3">Order {delivery.order_ref}</p>
-          <div className="my-3">
-            {delivery.points?.map((p, i) => (
-              <p key={i}>
-                {i === 0 ? "Pickup" : "Delivery"}: {p.address} · {p.name} ·{" "}
-                {p.phone}
-                {p.pays ? " · Pays courier charge in cash" : ""}
-              </p>
-            ))}
-          </div>
-          <p>
-            Status:{" "}
-            {delivery.delivery_status ||
-              delivery.provider_status ||
-              delivery.state}
+          <p className="my-3 font-semibold">
+            Order {delivery.order_ref} ·{" "}
+            {delivery.provider === "delhivery"
+              ? "Delhivery"
+              : "Legacy Borzo request"}
           </p>
+          {delivery.points.map((p, i) => (
+            <p key={i} className="my-2">
+              {i === 0 ? "Pickup" : "Delivery"}: {p.address} · {p.name} ·{" "}
+              {p.phone}
+            </p>
+          ))}
+          <p className="my-4 font-semibold">
+            {labels[delivery.state] || delivery.state}
+          </p>
+          {delivery.provider_status && (
+            <p>Courier status: {delivery.provider_status}</p>
+          )}
           <p className="text-sm">
-            Updated: {new Date(delivery.updated_at).toLocaleString()}
+            Updated {new Date(delivery.updated_at).toLocaleString()}
           </p>
-          {delivery.test && (
-            <p className="my-2 font-semibold">
-              Test mode — no live courier is booked.
+          {delivery.amount && (
+            <p className="my-3 text-lg">
+              Delivery charge: ₹{Number(delivery.amount).toFixed(2)}
             </p>
           )}
-          {delivery.state === "needs_review" ||
-          delivery.state === "submitting" ? (
-            <p>Staff are checking this booking. Do not book another courier.</p>
-          ) : null}
-          {delivery.state === "draft" &&
-            (delivery.customer_enabled || staffId) && (
-              <>
-                <p className="my-3">
-                  Request a delivery quote for the pickup and delivery details
-                  confirmed with the studio. Your contact details and addresses
-                  will be shared with Borzo. Delivery charges are paid in cash
-                  at the location selected by staff.
+          {delivery.awb && <p>AWB: {delivery.awb}</p>}
+          {delivery.pickup_date && (
+            <p>
+              Pickup: {delivery.pickup_date}, 6–9 PM
+              {delivery.pickup_request_id
+                ? " · Request " + delivery.pickup_request_id
+                : ""}
+            </p>
+          )}
+          {delivery.provider === "delhivery" && (
+            <>
+              {!delivery.dispatch_enabled && !delivery.test && (
+                <p className="my-3 rounded bg-amber-50 p-3">
+                  Live dispatch is not activated. Accepting a request or
+                  recording payment will not dispatch a courier.
                 </p>
+              )}
+              {delivery.test && (
+                <p className="my-3 font-semibold">
+                  Staging mode — no live dispatch.
+                </p>
+              )}
+              {!staffId &&
+                delivery.state === "requested" &&
+                delivery.customer_enabled && (
+                  <>
+                    <p className="my-3">
+                      Please review the delivery address and charge. Acceptance
+                      does not book a courier. Pay PurelyJid offline using the
+                      instructions shared by our team; dispatch is booked only
+                      after our team confirms receipt. If the estimate changes
+                      before booking, we will ask you to review it again.
+                    </p>
+                    <label className="block my-3">
+                      <input
+                        type="checkbox"
+                        checked={confirm}
+                        onChange={(e) => setConfirm(e.target.checked)}
+                      />{" "}
+                      I have reviewed this request and the delivery charge. My
+                      delivery details will be shared with Delhivery when staff
+                      books dispatch.
+                    </label>
+                    <button
+                      className={button}
+                      disabled={busy || !confirm}
+                      onClick={() => act("accept")}
+                    >
+                      Accept delivery request
+                    </button>
+                    <button
+                      className={button}
+                      disabled={busy || !confirm}
+                      onClick={() => act("decline")}
+                    >
+                      Decline delivery request
+                    </button>
+                  </>
+                )}
+              {!staffId && delivery.state === "accepted" && (
+                <p className="my-3">
+                  Thank you. Please complete offline payment with the PurelyJid
+                  team. We will confirm payment before booking your courier.
+                </p>
+              )}
+              {staffId && delivery.state === "accepted" && (
+                <div className="my-4 rounded bg-slate-50 p-4">
+                  <h3 className="font-bold">
+                    Confirm offline delivery payment
+                  </h3>
+                  <p>
+                    Record the delivery charge only. Keep merchandise payment in
+                    the sales order.
+                  </p>
+                  <label className="block my-2">
+                    Amount received (₹)
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={paidAmount}
+                      onChange={(e) => setPaidAmount(e.target.value)}
+                      className="block border p-2"
+                    />
+                  </label>
+                  <label className="block my-2">
+                    Payment reference / cash receipt
+                    <input
+                      maxLength={120}
+                      value={paymentReference}
+                      onChange={(e) => setPaymentReference(e.target.value)}
+                      className="block border p-2"
+                    />
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={confirm}
+                      onChange={(e) => setConfirm(e.target.checked)}
+                    />{" "}
+                    I have received the accepted delivery charge.
+                  </label>
+                  <button
+                    className={button}
+                    disabled={
+                      busy || !confirm || !paymentReference || !paidAmount
+                    }
+                    onClick={() => act("confirm_payment")}
+                  >
+                    Confirm payment received
+                  </button>
+                </div>
+              )}
+              {staffId && delivery.state === "payment_confirmed" && (
+                <>
+                  <label className="block my-3">
+                    <input
+                      type="checkbox"
+                      checked={confirm}
+                      onChange={(e) => setConfirm(e.target.checked)}
+                    />{" "}
+                    Payment is received and parcel details are correct. I
+                    authorize shipment creation and the applicable Delhivery
+                    account charge.
+                  </label>
+                  <button
+                    className={button}
+                    disabled={
+                      busy ||
+                      !confirm ||
+                      (!delivery.dispatch_enabled && !delivery.test)
+                    }
+                    onClick={() => act("book")}
+                  >
+                    Create Delhivery shipment
+                  </button>
+                </>
+              )}
+              {staffId && delivery.state === "manifested" && (
+                <div className="my-4 rounded border p-4">
+                  <p>
+                    Print and attach the shipping label for AWB {delivery.awb}{" "}
+                    from Delhivery One before scheduling pickup. This uses the
+                    existing shipment; it does not create another AWB.
+                  </p>
+                  <a
+                    className="underline"
+                    href="https://one.delhivery.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open Delhivery One for label
+                  </a>
+                  <label className="block my-3">
+                    Pickup date (Tuesday–Saturday, 6–9 PM)
+                    <input
+                      type="date"
+                      value={pickupDate}
+                      onChange={(e) => setPickupDate(e.target.value)}
+                      className="block border p-2"
+                    />
+                  </label>
+                  <label className="block">
+                    <input
+                      type="checkbox"
+                      checked={confirm}
+                      onChange={(e) => setConfirm(e.target.checked)}
+                    />{" "}
+                    Parcel is packed and labeled; I authorize scheduling pickup.
+                  </label>
+                  <button
+                    className={button}
+                    disabled={
+                      busy ||
+                      !confirm ||
+                      !pickupDate ||
+                      (!delivery.dispatch_enabled && !delivery.test)
+                    }
+                    onClick={() => act("schedule_pickup")}
+                  >
+                    Schedule pickup
+                  </button>
+                  <p className="text-sm">
+                    An existing confirmed pickup for this warehouse/date is
+                    reused. Check its parcel count in Delhivery One before
+                    handover.
+                  </p>
+                </div>
+              )}
+              {staffId && delivery.awb && (
                 <button
+                  className={button}
                   disabled={busy}
-                  onClick={() => act("quote")}
-                  className="rounded-lg bg-slate-900 px-5 py-3 text-white"
+                  onClick={() => act("refresh")}
                 >
-                  Get delivery quote
+                  Refresh Delhivery tracking
+                </button>
+              )}
+              {staffId &&
+                ![
+                  "submitting",
+                  "cancelling",
+                  "needs_review",
+                  "cancelled",
+                  "declined",
+                ].includes(delivery.state) && (
+                  <div className="my-3">
+                    <label className="block">
+                      <input
+                        type="checkbox"
+                        checked={confirm}
+                        onChange={(e) => setConfirm(e.target.checked)}
+                      />{" "}
+                      Cancel this request/shipment. Any paid charge or provider
+                      cancellation fee must be reconciled separately.
+                    </label>
+                    <button
+                      className={button}
+                      disabled={busy || !confirm}
+                      onClick={() => act("cancel")}
+                    >
+                      Cancel request / shipment
+                    </button>
+                  </div>
+                )}
+            </>
+          )}
+          {delivery.provider !== "delhivery" && (
+            <p className="my-3">
+              This old request cannot book a courier. Contact PurelyJid for a
+              new Delhivery request.
+            </p>
+          )}
+          {staffId &&
+            delivery.provider === "borzo" &&
+            delivery.state === "draft" && (
+              <>
+                <label className="block">
+                  <input
+                    type="checkbox"
+                    checked={confirm}
+                    onChange={(e) => setConfirm(e.target.checked)}
+                  />{" "}
+                  Close this unbooked legacy request.
+                </label>
+                <button
+                  className={button}
+                  disabled={busy || !confirm}
+                  onClick={() => act("cancel")}
+                >
+                  Close old request
                 </button>
               </>
             )}
-          {quote && (
-            <div className="my-4 rounded-xl bg-slate-100 p-4">
-              <p className="font-bold">
-                Quoted courier charge: ₹{quote.amount}
-              </p>
-              <p>
-                Quote valid for 5 minutes. A price change will require a new
-                quote.
-              </p>
-              <label className="my-3 block">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                />{" "}
-                I confirm the courier charge and authorize this booking.
-              </label>
-              <button
-                disabled={busy || !consent}
-                onClick={() => act("book")}
-                className="rounded-lg bg-slate-900 px-5 py-3 text-white"
-              >
-                {quote.test
-                  ? "Confirm test booking"
-                  : "Confirm and book courier"}
-              </button>
-            </div>
-          )}
+          <button
+            className="mr-4 my-3 underline"
+            disabled={busy}
+            onClick={() => act("view")}
+          >
+            Refresh status
+          </button>
           {staffId && (
-            <div className="my-3">
+            <>
               <button
-                onClick={() => act("share")}
+                className="my-3 underline"
                 disabled={busy}
-                className="underline"
+                onClick={() => act("share")}
               >
-                Create a new private customer link
+                Generate new private customer link
               </button>
               {share && <p className="break-all">{share}</p>}
-            </div>
-          )}
-          {staffId && delivery.state === "booked" && (
-            <div className="my-4">
-              <button
-                disabled={busy}
-                onClick={() => act("refresh")}
-                className="mr-3 underline"
-              >
-                Refresh from Borzo
-              </button>
-              <label className="block my-2">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                />{" "}
-                I authorize cancellation; Borzo may apply charges.
-              </label>
-              <button
-                disabled={busy || !consent}
-                onClick={() => act("cancel")}
-                className="text-red-700 underline"
-              >
-                Cancel courier
-              </button>
-            </div>
+            </>
           )}
           <p className="mt-4 text-sm">
-            Parcel preparation and courier delivery are tracked separately.
-            Refresh this page for the latest received status.
+            Courier progress and product-order completion are separate. Tracking
+            refreshes on page load or when you refresh status.
           </p>
         </>
       )}

@@ -9,6 +9,17 @@ export type Shipment = {
   input: BookingInput;
   state: string;
   borzo_id: number | null;
+  provider: "borzo" | "delhivery";
+  revision: number;
+  accepted_at: string | null;
+  payment_confirmed_at: string | null;
+  payment_reference: string | null;
+  paid_amount: string | null;
+  delhivery_awb: string | null;
+  provider_checked_at: string | null;
+  quote_checked_at: string | null;
+  pickup_date: string | null;
+  pickup_request_id: string | null;
   provider_status: string | null;
   delivery_status: string | null;
   amount: string | null;
@@ -37,6 +48,16 @@ export async function shipment(
 export function publicShipment(s: Shipment) {
   return {
     id: s.id,
+    provider: s.provider,
+    revision: s.revision,
+    accepted_at: s.accepted_at,
+    payment_confirmed_at: s.payment_confirmed_at,
+    awb: s.delhivery_awb,
+    pickup_date: s.pickup_date,
+    pickup_request_id: s.pickup_request_id,
+    dispatch_enabled:
+      s.provider === "delhivery" &&
+      process.env.DELHIVERY_LIVE_ENABLED === "true",
     order_ref: s.order_ref,
     state: s.state,
     provider_status: s.provider_status,
@@ -50,7 +71,10 @@ export function publicShipment(s: Shipment) {
       phone: p.contact_person.phone,
       pays: p.is_order_payment_here,
     })),
-    test: process.env.BORZO_ENV !== "production",
+    test:
+      s.provider === "delhivery"
+        ? process.env.DELHIVERY_ENV === "staging"
+        : process.env.BORZO_ENV !== "production",
   };
 }
 export async function saveShipment(id: string, patch: object) {

@@ -1,3 +1,4 @@
+import { refreshDelhivery } from "./delhiveryWorkflow";
 import { supabase } from "@/lib/supabase/client";
 export async function courierTracking(orderRef: string, mobile: string) {
   if (
@@ -7,7 +8,7 @@ export async function courierTracking(orderRef: string, mobile: string) {
     return null;
   const { data, error } = await supabase
     .from("courier_shipments")
-    .select("order_ref,state,provider_status,delivery_status,updated_at,input")
+    .select("*")
     .eq("order_ref", orderRef)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -17,9 +18,11 @@ export async function courierTracking(orderRef: string, mobile: string) {
     .replace(/\D/g, "")
     .slice(-10);
   if (expected !== mobile.replace(/\D/g, "").slice(-10)) return null;
+  const latest =
+    data.provider === "delhivery" ? await refreshDelhivery(data) : data;
   return {
     orderRef: data.order_ref,
-    status: data.delivery_status || data.provider_status || data.state,
-    updatedAt: data.updated_at,
+    status: latest.delivery_status || latest.provider_status || latest.state,
+    updatedAt: latest.updated_at,
   };
 }

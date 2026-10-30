@@ -162,7 +162,7 @@ export default function TrackOrderPage() {
 
       <section className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
         <CourierPanel />
-        {courier&&<section className="mb-6 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">Courier delivery · {courier.orderRef}</h2><p className="mt-3">{courier.status.replaceAll('_',' ')}</p><p className="text-sm text-slate-500">Updated {new Date(courier.updatedAt).toLocaleString()}</p><p className="mt-3 text-sm">For courier booking, use the private link shared by the PurelyJid team once your parcel is ready.</p></section>}
+        {courier&&<section className="mb-6 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">Courier delivery · {courier.orderRef}</h2><p className="mt-3">{courier.status.replaceAll('_',' ')}</p><p className="text-sm text-slate-500">Updated {new Date(courier.updatedAt).toLocaleString()}</p><p className="mt-3 text-sm">Use the private link shared by PurelyJid to accept or decline delivery. Dispatch follows staff confirmation of offline payment.</p></section>}
         {error && (
           <div
             role="alert"
