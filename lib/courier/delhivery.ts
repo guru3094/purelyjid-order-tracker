@@ -282,15 +282,21 @@ export function validPickupDate(date: unknown, now = new Date()) {
   if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date))
     throw new CourierError("Choose a pickup date.");
   const dt = new Date(date + "T18:00:00+05:30");
+  const todayIndia = new Date(now.getTime() + 19800000)
+    .toISOString()
+    .slice(0, 10);
+  const daysAhead =
+    (Date.parse(date + "T00:00:00Z") - Date.parse(todayIndia + "T00:00:00Z")) /
+    86400000;
   if (
     !Number.isFinite(dt.getTime()) ||
     new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date ||
     [0, 1].includes(new Date(date + "T00:00:00Z").getUTCDay()) ||
     dt.getTime() < now.getTime() + 60 * 60 * 1000 ||
-    dt.getTime() > now.getTime() + 30 * 86400000
+    daysAhead > 7
   )
     throw new CourierError(
-      "Choose Tuesday–Saturday, at least one hour before the 6 PM slot, within 30 days.",
+      "Choose Tuesday–Saturday, at least one hour before the 6 PM slot, within 7 days.",
     );
   return date;
 }

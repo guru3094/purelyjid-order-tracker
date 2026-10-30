@@ -342,10 +342,17 @@ for (const [name, fn] of Object.entries({
       state.staff = true;
       assert.equal((await act(s, "book", { confirm: true })).status, 409);
       const edited = await staffRoute.POST(
-        request({ id: s.id, revision:1, input, customerEnabled: true }),
+        request({ id: s.id, revision: 1, input, customerEnabled: true }),
       );
       assert.equal(edited.status, 200);
-      assert.equal((await staffRoute.POST(request({id:s.id,revision:1,input,customerEnabled:true}))).status,409);
+      assert.equal(
+        (
+          await staffRoute.POST(
+            request({ id: s.id, revision: 1, input, customerEnabled: true }),
+          )
+        ).status,
+        409,
+      );
       state.staff = false;
       assert.equal((await act(s, "view")).status, 404);
     },
@@ -489,4 +496,11 @@ test("validation rejects invalid parcel values and closed pickup days, serviceab
     ),
     false,
   );
+});
+
+test('pickup scheduling follows seven India calendar days and preserves closed-day/lead-time checks',()=>{
+ const now=new Date('2026-10-30T10:00:00Z');
+ assert.equal(dl.validPickupDate('2026-11-06',now),'2026-11-06');
+ assert.throws(()=>dl.validPickupDate('2026-11-10',now),/within 7 days/);
+ assert.throws(()=>dl.validPickupDate('2026-10-30',new Date('2026-10-30T12:00:00Z')),/at least one hour/);
 });
