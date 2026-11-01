@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { vinylCharacterCount, vinylMaximumWidth, vinylMinimumWidth, vinylTextSizeError } from "@/lib/vinyl/text-size";
 
 type FontPreview = { code: string; name: string; imageUrl: string };
 type VinylColor = "Golden" | "White" | "Black" | "Holographic";
@@ -16,6 +15,12 @@ type ContentItem = {
 type PreviewResponse = { success: boolean; previews?: FontPreview[]; error?: string };
 
 const WHATSAPP_NUMBER = "919518770073";
+const MIN_WIDTH = 2.5;
+const MAX_WIDTH = 29;
+function isValidWidth(width: string) {
+  const value = Number(width);
+  return Number.isFinite(value) && value >= MIN_WIDTH && value <= MAX_WIDTH;
+}
 const COLORS: VinylColor[] = ["Golden", "White", "Black", "Holographic"];
 const FONT_LIST = [
   { code: "PF01", name: "Style Casual" },
@@ -51,7 +56,7 @@ export default function VinylFontSelector() {
       items.every(
         (item) =>
           item.content.trim() &&
-          !vinylTextSizeError(item.content, item.width) &&
+          isValidWidth(item.width) &&
           item.color &&
           item.selectedFontCode,
       ),
@@ -82,9 +87,8 @@ export default function VinylFontSelector() {
       return;
     }
 
-    const invalid = items.map((item, index) => ({ error: vinylTextSizeError(item.content, item.width), index })).find(item => item.error);
-    if (invalid) {
-      setError(`Content ${invalid.index + 1}: ${invalid.error}`);
+    if (items.some(item => !isValidWidth(item.width))) {
+      setError(`Width must be between ${MIN_WIDTH} cm and ${MAX_WIDTH} cm for every item.`);
       return;
     }
 
@@ -187,16 +191,16 @@ export default function VinylFontSelector() {
                       disabled={busy}
                       id={`width-${item.id}`}
                       type="number"
-                      min={vinylMinimumWidth(item.content)}
-                      max={vinylMaximumWidth(item.content)}
+                      min={MIN_WIDTH}
+                      max={MAX_WIDTH}
                       step="0.1"
                       value={item.width}
-                      placeholder={String(vinylMinimumWidth(item.content))}
+                      placeholder="5"
                       onChange={(e) => updateTextField(item.id, "width", e.target.value)}
                     />
                     <span>cm</span>
                   </div>
-                  <small>{vinylCharacterCount(item.content)} characters · {vinylMinimumWidth(item.content) === vinylMaximumWidth(item.content) ? `${vinylMinimumWidth(item.content)} cm` : `${vinylMinimumWidth(item.content)}–${vinylMaximumWidth(item.content)} cm`} (spaces and symbols count).</small>
+                  <small>{MIN_WIDTH}–{MAX_WIDTH} cm</small>
                 </div>
 
                 <div className="vinyl-field">

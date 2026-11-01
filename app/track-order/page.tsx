@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 
-import CourierPanel from "@/components/courier/CourierPanel";
 
 import BrandLogo from "@/components/branding/BrandLogo";
 import OrderTrackingForm from "@/components/tracking/OrderTrackingForm";
@@ -37,7 +36,6 @@ export default function TrackOrderPage() {
   const [order, setOrder] =
     useState<OrderResponse | null>(null);
 
-  const [courier,setCourier]=useState<{orderRef:string;status:string;updatedAt:string}|null>(null);
   const [loading, setLoading] =
     useState(false);
 
@@ -62,7 +60,6 @@ export default function TrackOrderPage() {
     setLoading(true);
     setError(null);
     setOrder(null);
-    setCourier(null);
 
     try {
       const searchParams =
@@ -93,7 +90,6 @@ export default function TrackOrderPage() {
         responseBody as TrackOrderApiResponse;
 
       setOrder(trackingResponse.order);
-      setCourier(trackingResponse.courier||null);
     } catch (requestError) {
       if (
         requestError instanceof DOMException &&
@@ -116,7 +112,6 @@ export default function TrackOrderPage() {
 
   function handleTrackAnother() {
     setOrder(null);
-    setCourier(null);
     setError(null);
   }
 
@@ -161,8 +156,6 @@ export default function TrackOrderPage() {
       </section>
 
       <section className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
-        <CourierPanel />
-        {courier&&<section className="mb-6 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">Courier delivery · {courier.orderRef}</h2><p className="mt-3">{courier.status.replaceAll('_',' ')}</p><p className="text-sm text-slate-500">Updated {new Date(courier.updatedAt).toLocaleString()}</p><p className="mt-3 text-sm">Use the private link shared by PurelyJid to accept or decline delivery. Dispatch follows staff confirmation of offline payment.</p></section>}
         {error && (
           <div
             role="alert"

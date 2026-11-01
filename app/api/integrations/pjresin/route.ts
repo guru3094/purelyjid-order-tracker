@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
-import { validSignature } from "@/lib/courier/borzo";
+import { validSignature } from "@/lib/security/request-signature";
 import { supabase } from "@/lib/supabase/client";
 import {
   appendImportedStoreOrder,

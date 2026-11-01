@@ -1,4 +1,3 @@
-import { courierTracking } from '@/lib/courier/tracking';
 import {
   NextRequest,
   NextResponse,
@@ -38,8 +37,6 @@ export async function GET(
           }
         );
 
-        const courier = await courierTracking(orderId.trim(),mobileNumber);
-        if(courier && /^PJC/.test(orderId.trim())) return NextResponse.json({correlationId,success:true,order:null,courier},{headers:{'Cache-Control':'no-store'}});
         const result =
           await trackCustomerOrder(
             orderId,
@@ -57,7 +54,6 @@ export async function GET(
         return NextResponse.json({
           correlationId,
           ...result,
-          courier,
         });
       })
   );

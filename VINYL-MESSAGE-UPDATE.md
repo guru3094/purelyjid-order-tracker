@@ -4,15 +4,7 @@ Based on latest GitHub main `a142895` (Delhivery seven-day pickup-window update)
 
 ## Customer font validation
 
-The existing eight PF01–PF08 fonts and their Canva templates are unchanged. Before preview generation, the browser and `/api/vinyl-fonts/preview` both validate the complete entered text against the requested width:
-
-| Characters, including spaces and symbols | Allowed width |
-| --- | --- |
-| 1–5 | 2.5 cm |
-| 6–8 | 2.5–3 cm |
-| 9–100 | 5–29 cm (minimum 5 cm) |
-
-The minimum width is 2.5 cm for up to eight characters and 5 cm for longer content. Empty text is rejected. Invalid inputs show an error before any Canva call; the application does not silently change the size. Counts use visible Unicode characters (graphemes), so a composed emoji or accented letter counts once. Each content item is validated separately. The preview API now requires `width` as well as `content`. Catalogue designs, customer-uploaded images and the internal production tool do not acquire these customer-text limits.
+The existing eight PF01–PF08 fonts and their Canva templates are unchanged. Character-count-based width restrictions have been removed. Customer text widths use the original 2.5–29 cm range, independently of text length. Required text and basic numeric width checks remain.
 
 ## Customer WhatsApp
 
@@ -38,8 +30,8 @@ The additive migration in `supabase/migrations/*_artist_request_message_remarks.
 
 - TypeScript and targeted ESLint for the changed modules.
 - Full production build with placeholder Supabase build credentials.
-- Regression tests covering width boundaries, spaces/symbols/emoji, no Canva call for invalid width, price-review gating, corrected WhatsApp and sheet content, resends, ambiguous sheet rows, customer-only remarks, private legacy links and staff authentication.
-- Existing courier and status-sync tests included.
+- Regression tests covering removal of character-based width rules, required text, price-review gating, corrected WhatsApp and sheet content, resends, ambiguous sheet rows, customer-only remarks, private legacy links and staff authentication.
+- Existing order status-sync tests included.
 - Google Sheets and WhatsApp side effects were mocked in tests; no real messages were sent and no customer/artist sheet rows were written during verification. Browser visual verification was not available.
 
 Replace files at matching paths or use the complete project archive. Deploy using the existing production deployment process.
