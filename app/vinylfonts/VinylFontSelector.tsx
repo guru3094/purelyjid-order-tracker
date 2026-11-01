@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { vinylCharacterCount, vinylMaximumWidth, vinylTextSizeError } from "@/lib/vinyl/text-size";
+import { vinylCharacterCount, vinylMaximumWidth, vinylMinimumWidth, vinylTextSizeError } from "@/lib/vinyl/text-size";
 
 type FontPreview = { code: string; name: string; imageUrl: string };
 type VinylColor = "Golden" | "White" | "Black" | "Holographic";
@@ -16,7 +16,6 @@ type ContentItem = {
 type PreviewResponse = { success: boolean; previews?: FontPreview[]; error?: string };
 
 const WHATSAPP_NUMBER = "919518770073";
-const MIN_WIDTH = 2.5;
 const COLORS: VinylColor[] = ["Golden", "White", "Black", "Holographic"];
 const FONT_LIST = [
   { code: "PF01", name: "Style Casual" },
@@ -188,16 +187,16 @@ export default function VinylFontSelector() {
                       disabled={busy}
                       id={`width-${item.id}`}
                       type="number"
-                      min={MIN_WIDTH}
+                      min={vinylMinimumWidth(item.content)}
                       max={vinylMaximumWidth(item.content)}
                       step="0.1"
                       value={item.width}
-                      placeholder="2.5"
+                      placeholder={String(vinylMinimumWidth(item.content))}
                       onChange={(e) => updateTextField(item.id, "width", e.target.value)}
                     />
                     <span>cm</span>
                   </div>
-                  <small>{vinylCharacterCount(item.content)} characters · maximum {vinylMaximumWidth(item.content)} cm (spaces and symbols count).</small>
+                  <small>{vinylCharacterCount(item.content)} characters · {vinylMinimumWidth(item.content) === vinylMaximumWidth(item.content) ? `${vinylMinimumWidth(item.content)} cm` : `${vinylMinimumWidth(item.content)}–${vinylMaximumWidth(item.content)} cm`} (spaces and symbols count).</small>
                 </div>
 
                 <div className="vinyl-field">

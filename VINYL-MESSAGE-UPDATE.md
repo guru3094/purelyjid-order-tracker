@@ -6,13 +6,13 @@ Based on latest GitHub main `a142895` (Delhivery seven-day pickup-window update)
 
 The existing eight PF01–PF08 fonts and their Canva templates are unchanged. Before preview generation, the browser and `/api/vinyl-fonts/preview` both validate the complete entered text against the requested width:
 
-| Characters, including spaces and symbols | Maximum width |
+| Characters, including spaces and symbols | Allowed width |
 | --- | --- |
 | 1–5 | 2.5 cm |
-| 6–8 | 3 cm |
-| 9–100 | 5 cm |
+| 6–8 | 2.5–3 cm |
+| 9–100 | 5–29 cm (minimum 5 cm) |
 
-The existing minimum width of 2.5 cm remains. Invalid inputs show an error before any Canva call; the application does not silently change the size. Counts use visible Unicode characters (graphemes), so a composed emoji or accented letter counts once. Each content item is validated separately. The preview API now requires `width` as well as `content`. Catalogue designs, customer-uploaded images and the internal production tool do not acquire these customer-text limits.
+The minimum width is 2.5 cm for up to eight characters and 5 cm for longer content. Empty text is rejected. Invalid inputs show an error before any Canva call; the application does not silently change the size. Counts use visible Unicode characters (graphemes), so a composed emoji or accented letter counts once. Each content item is validated separately. The preview API now requires `width` as well as `content`. Catalogue designs, customer-uploaded images and the internal production tool do not acquire these customer-text limits.
 
 ## Customer WhatsApp
 

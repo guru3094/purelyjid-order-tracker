@@ -28,7 +28,7 @@ export default function VinylFontsPage() {
             <div className="vinyl-hero-badges" aria-label="Custom vinyl highlights">
               <span>8 Signature Fonts</span>
               <span>4 Vinyl Colors</span>
-              <span>2.5–5 cm Text Width</span>
+              <span>2.5–29 cm Text Width</span>
             </div>
           </div>
 

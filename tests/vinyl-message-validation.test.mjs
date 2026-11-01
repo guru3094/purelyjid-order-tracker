@@ -32,13 +32,14 @@ function fixture(product='Frame ₹2,500'){
  globalThis.fixture={authorized:true,canvaCalls:0,updates:[],order:{order_id:'PJ100001',product_name:product,order_date:'10/29/2026',customer_name:'Test Customer',artist_status:'NOT_SENT',artist_sheet_updated:false,remarks:'',comments:'Handle carefully'},sourceOrders:[{orderId:'PJ100001',remarks:'Blue background',customerName:'Test Customer',orderDate:'10/29/2026',mobileNumber:'9999999999',productName:'Frame ₹2,500',advancePaid:'100',productCost:'2500',balanceToBePaid:'2400',fulfillmentMethod:'Pickup',productCategory:'Resin Art',status:'PREPARING'}]};return globalThis.fixture;
 }
 test('width brackets count spaces, punctuation and composed characters at 5/6/8/9 boundaries',()=>{
- for(const [text,count,max] of [['A B#!',5,2.5],['AB CD!',6,3],['ABCDEFGH',8,3],['ABC DEFG!',9,5],['❤️A B!',5,2.5]]){
+ for(const [text,count,max] of [['A B#!',5,2.5],['AB CD!',6,3],['ABCDEFGH',8,3],['ABC DEFG!',9,29],['❤️A B!',5,2.5]]){
  assert.equal(size.vinylCharacterCount(text),count);assert.equal(size.vinylMaximumWidth(text),max);assert.equal(size.vinylTextSizeError(text,max),null);assert.ok(size.vinylTextSizeError(text,max+.1));}
+ assert.ok(size.vinylTextSizeError('ABCDEFGHI',4.9));assert.equal(size.vinylTextSizeError('ABCDEFGHI',5),null);assert.equal(size.vinylTextSizeError('ABCDEFGHI',12),null);assert.equal(size.vinylTextSizeError('ABCDEFGHI',29),null);assert.ok(size.vinylTextSizeError('',2.5));
  assert.ok(size.vinylTextSizeError('ABCDE',2.4));assert.ok(size.vinylTextSizeError('ABCDE',undefined));
 });
 test('invalid width returns 400 before Canva is called; valid boundary calls Canva once',async()=>{
- const f=fixture();for(const body of [{content:'ABCDE',width:3},{content:'ABCDEF',width:3.1},{content:'ABCDEFGHI',width:5.1},{content:'ABCDE'}])assert.equal((await preview.POST(req(body))).status,400);
- assert.equal(f.canvaCalls,0);assert.equal((await preview.POST(req({content:'ABCDEF',width:3}))).status,200);assert.equal(f.canvaCalls,1);
+ const f=fixture();for(const body of [{content:'ABCDE',width:3},{content:'ABCDEF',width:3.1},{content:'ABCDEFGHI',width:4.9},{content:'ABCDE'}])assert.equal((await preview.POST(req(body))).status,400);
+ assert.equal(f.canvaCalls,0);assert.equal((await preview.POST(req({content:'ABCDEF',width:3}))).status,200);assert.equal(f.canvaCalls,1);assert.equal((await preview.POST(req({content:'ABCDEFGHI',width:12}))).status,200);assert.equal(f.canvaCalls,2);
 });
 test('detect monetary product notation without treating sizes and quantities as prices',()=>{
  for(const name of ['Frame ₹2500','Frame Rs. 500','Frame 500 INR','Frame 500/-','Frame - 2,500','Price: 2500','Frame - 500 (including name)']) assert.equal(price.hasProductPrice(name),true,name);
