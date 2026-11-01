@@ -42,7 +42,7 @@ export function orderStatusSentence(status: string): string {
   return "Here is an update on your PurelyJid order.";
 }
 
-export function customerWhatsAppMessage(snapshot: InvoiceSnapshot, invoiceUrl: string, productCategory: string | undefined, orderStatus: string): string {
+export function customerWhatsAppMessage(snapshot: InvoiceSnapshot, invoiceUrl: string, productCategory: string | undefined, orderStatus: string, remarks?: string): string {
   const omitTracking = ["workshop", "raw materials"].includes(productCategory?.trim().toLowerCase() ?? "");
   return [
     `Hi ${snapshot.customerName},`, "",
@@ -58,6 +58,7 @@ export function customerWhatsAppMessage(snapshot: InvoiceSnapshot, invoiceUrl: s
       `Advance Paid: ${formatMoney(snapshot.advancePaid)}`,
       "Product selection: Pending",
     ]),
+    ...(remarks?.trim() ? [`Remarks: ${remarks.trim()}`] : []),
     "", `${snapshot.mode === "invoice" ? "Invoice" : "Advance receipt"} PDF: ${invoiceUrl}`, "",
     ...(!omitTracking ? [`Track your order using Order ID ${snapshot.orderId} at purelyjid.in/track-order`, ""] : []),
     "– PurelyJid",

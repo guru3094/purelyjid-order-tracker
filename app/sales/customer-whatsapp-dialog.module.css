@@ -14,3 +14,4 @@
 .note a { color: #a64f3c; font-weight: 800; }
 .close { padding: 9px 15px; background: #fff; border: 1px solid #b9c2bf; color: #26343a; font-weight: 700; cursor: pointer; }
 @media(max-width:540px){.dialog { padding: 20px; }.dialog h2 { font-size: 25px; }}
+.productField{display:grid;gap:10px;color:#26343a;font-size:14px;font-weight:600}.productField textarea{box-sizing:border-box;width:100%;padding:12px;border:1px solid #b8c0bd;border-radius:8px;font:inherit;line-height:1.6;resize:vertical}.productField small{font-weight:400;line-height:1.6;color:#687376}.productField textarea:focus-visible{outline:2px solid #bb654f;outline-offset:2px}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { vinylCharacterCount, vinylMaximumWidth, vinylTextSizeError } from "@/lib/vinyl/text-size";
 
 type FontPreview = { code: string; name: string; imageUrl: string };
 type VinylColor = "Golden" | "White" | "Black" | "Holographic";
@@ -16,7 +17,6 @@ type PreviewResponse = { success: boolean; previews?: FontPreview[]; error?: str
 
 const WHATSAPP_NUMBER = "919518770073";
 const MIN_WIDTH = 2.5;
-const MAX_WIDTH = 29;
 const COLORS: VinylColor[] = ["Golden", "White", "Black", "Holographic"];
 const FONT_LIST = [
   { code: "PF01", name: "Style Casual" },
@@ -40,10 +40,7 @@ function newItem(): ContentItem {
   };
 }
 
-function isValidWidth(width: string) {
-  const value = Number(width);
-  return Number.isFinite(value) && value >= MIN_WIDTH && value <= MAX_WIDTH;
-}
+
 
 export default function VinylFontSelector() {
   const [items, setItems] = useState<ContentItem[]>([newItem()]);
@@ -55,7 +52,7 @@ export default function VinylFontSelector() {
       items.every(
         (item) =>
           item.content.trim() &&
-          isValidWidth(item.width) &&
+          !vinylTextSizeError(item.content, item.width) &&
           item.color &&
           item.selectedFontCode,
       ),
@@ -86,8 +83,9 @@ export default function VinylFontSelector() {
       return;
     }
 
-    if (items.some((item) => !isValidWidth(item.width))) {
-      setError(`Width must be between ${MIN_WIDTH} cm and ${MAX_WIDTH} cm for every item.`);
+    const invalid = items.map((item, index) => ({ error: vinylTextSizeError(item.content, item.width), index })).find(item => item.error);
+    if (invalid) {
+      setError(`Content ${invalid.index + 1}: ${invalid.error}`);
       return;
     }
 
@@ -103,7 +101,7 @@ export default function VinylFontSelector() {
         const response = await fetch("/api/vinyl-fonts/preview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: item.content.trim() }),
+          body: JSON.stringify({ content: item.content, width: item.width }),
         });
         const data = (await response.json()) as PreviewResponse;
         if (!response.ok || !data.success || !data.previews) {
@@ -161,6 +159,7 @@ export default function VinylFontSelector() {
                   <button
                     type="button"
                     className="vinyl-remove-button"
+                    disabled={busy}
                     onClick={() => setItems((all) => all.filter((entry) => entry.id !== item.id))}
                   >
                     Remove
@@ -173,6 +172,7 @@ export default function VinylFontSelector() {
                   <label htmlFor={`content-${item.id}`}>Your text</label>
                   <input
                     id={`content-${item.id}`}
+                    disabled={busy}
                     value={item.content}
                     maxLength={100}
                     placeholder="e.g. Jidnyasa"
@@ -185,24 +185,26 @@ export default function VinylFontSelector() {
                   <label htmlFor={`width-${item.id}`}>Width</label>
                   <div className="vinyl-width-input">
                     <input
+                      disabled={busy}
                       id={`width-${item.id}`}
                       type="number"
                       min={MIN_WIDTH}
-                      max={MAX_WIDTH}
+                      max={vinylMaximumWidth(item.content)}
                       step="0.1"
                       value={item.width}
-                      placeholder="10"
+                      placeholder="2.5"
                       onChange={(e) => updateTextField(item.id, "width", e.target.value)}
                     />
                     <span>cm</span>
                   </div>
-                  <small>{MIN_WIDTH}–{MAX_WIDTH} cm</small>
+                  <small>{vinylCharacterCount(item.content)} characters · maximum {vinylMaximumWidth(item.content)} cm (spaces and symbols count).</small>
                 </div>
 
                 <div className="vinyl-field">
                   <label htmlFor={`color-${item.id}`}>Color</label>
                   <div className="vinyl-select-wrap">
                     <select
+                      disabled={busy}
                       id={`color-${item.id}`}
                       value={item.color}
                       onChange={(e) => updateColor(item.id, e.target.value as VinylColor | "")}
@@ -233,6 +235,7 @@ export default function VinylFontSelector() {
                           key={preview.code}
                           className={`vinyl-font-card ${selected ? "vinyl-font-card-selected" : ""}`}
                           aria-pressed={selected}
+                          disabled={busy}
                           onClick={() =>
                             setItems((all) =>
                               all.map((entry) =>

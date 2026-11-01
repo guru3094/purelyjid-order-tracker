@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     // Validate the exact PDF before giving the customer a link to it.
     await makeCustomerInvoicePdf(snapshot);
     const invoiceUrl = createInvoiceLink(snapshot);
-    const message = customerWhatsAppMessage(snapshot, invoiceUrl, order.productCategory, order.status);
+    const message = customerWhatsAppMessage(snapshot, invoiceUrl, order.productCategory, order.status, order.remarks);
     return NextResponse.json({ whatsappUrl: `https://wa.me/${phone}?text=${encodeURIComponent(message)}`, invoiceUrl,
       documentType: body.productDecided ? "invoice" : "advance receipt" }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

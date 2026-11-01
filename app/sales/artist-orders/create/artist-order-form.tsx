@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import StaffNav from "../../staff-nav";
+import ArtistWhatsAppDialog from "../../artist-whatsapp-dialog";
 
 type Order = {
   orderId: string;
@@ -16,6 +17,7 @@ export default function ArtistOrderForm() {
   const orderId = searchParams.get("orderId") ?? "";
   const [order, setOrder] = useState<Order | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(true);
+  const [showArtistMessage, setShowArtistMessage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -84,16 +86,7 @@ export default function ArtistOrderForm() {
       }
       if (!saveResponse.ok) throw new Error(saveData.error ?? "Could not create Artist order.");
 
-      const whatsappResponse = await fetch("/api/whatsapp/artist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.orderId }),
-      });
-      const whatsappData = await whatsappResponse.json();
-      if (!whatsappResponse.ok) throw new Error(whatsappData.error ?? "Could not prepare Artist WhatsApp message.");
-
-      window.open(whatsappData.whatsappUrl, "_blank", "noopener,noreferrer");
-      window.location.href = "/sales/orders";
+      setShowArtistMessage(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create Artist order.");
     } finally {
@@ -155,6 +148,7 @@ export default function ArtistOrderForm() {
           ) : null}
         </section>
       </main>
+      {showArtistMessage && order && <ArtistWhatsAppDialog orderId={order.orderId} onClose={() => setShowArtistMessage(false)} onOpened={() => { window.location.href = "/sales/orders"; }} />}
     </div>
   );
 }

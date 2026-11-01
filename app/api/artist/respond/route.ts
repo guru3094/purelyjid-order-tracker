@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
         ? `https://wa.me/${notifyNumber}?text=${encodeURIComponent(notifyText)}`
         : null,
       message: result.order.artist_sheet_updated
-        ? "Thank you for confirming the order again! 😊 Staff has been notified. The existing Artist Sheet entry is unchanged."
+        ? "Thank you for confirming the order again! 😊 Staff has been notified. The existing Artist Sheet entry has been checked and any revised product details updated."
         : "Thank you for accepting the order! 😊 All order details have been updated in the Resin Artist Order Sheet. Please check the sheet for the complete details.",
     });
   } catch (error) {

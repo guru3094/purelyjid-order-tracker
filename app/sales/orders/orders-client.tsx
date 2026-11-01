@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import StaffNav from "../staff-nav";
 import CustomerWhatsAppDialog from "../customer-whatsapp-dialog";
+import ArtistWhatsAppDialog from "../artist-whatsapp-dialog";
 
 type Order = {
   orderId: string;
@@ -90,6 +91,7 @@ export default function OrdersClient() {
   const [artistSentOrders, setArtistSentOrders] = useState<Set<string>>(() => new Set());
   const [sendingOrderId, setSendingOrderId] = useState<string | null>(null);
   const [artistMessages, setArtistMessages] = useState<Record<string, string>>({});
+  const [statusNow, setStatusNow] = useState(0);
   const [artistStatuses, setArtistStatuses] = useState<Record<string, ArtistOrderStatus>>({});
   const [artistStatusError, setArtistStatusError] = useState("");
   const [customerWhatsAppOrderId, setCustomerWhatsAppOrderId] = useState<string | null>(null);
@@ -123,6 +125,7 @@ export default function OrdersClient() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not load Artist acceptance statuses.");
       setArtistStatuses(data.statuses ?? {});
+      setStatusNow(Date.now());
       setArtistStatusError("");
     } catch (e) {
       setArtistStatusError(e instanceof Error ? e.message : "Could not load Artist acceptance statuses.");
@@ -130,12 +133,12 @@ export default function OrdersClient() {
   }
 
   useEffect(() => {
-    void load();
-    void loadArtistStatuses();
+    const initialLoad = window.setTimeout(() => { void load(); void loadArtistStatuses(); }, 0);
     const refresh = window.setInterval(() => { void loadArtistStatuses(); }, 30_000);
     const onFocus = () => { void loadArtistStatuses(); };
     window.addEventListener("focus", onFocus);
     return () => {
+      window.clearTimeout(initialLoad);
       window.clearInterval(refresh);
       window.removeEventListener("focus", onFocus);
     };
@@ -144,10 +147,10 @@ export default function OrdersClient() {
   const recentAcceptances = useMemo(() =>
     Object.entries(artistStatuses)
       .filter(([, item]) => item.artistStatus === "ACCEPTED" && item.acceptedAt &&
-        new Date(item.acceptedAt).getTime() > Date.now() - 48 * 60 * 60 * 1000)
+        new Date(item.acceptedAt).getTime() > statusNow - 48 * 60 * 60 * 1000)
       .sort((a, b) => new Date(b[1].acceptedAt ?? 0).getTime() - new Date(a[1].acceptedAt ?? 0).getTime())
       .slice(0, 3),
-    [artistStatuses]
+    [artistStatuses, statusNow]
   );
 
   const statuses = useMemo(
@@ -173,47 +176,8 @@ export default function OrdersClient() {
     [orders, q, status, fulfillment, category]
   );
 
-  async function sendToArtist(orderId: string) {
-    if (sendingOrderId === orderId) return;
+  function sendToArtist(orderId: string) {
     setSendingOrderId(orderId);
-    setArtistMessages((messages) => ({ ...messages, [orderId]: "" }));
-
-    try {
-      const response = await fetch("/api/whatsapp/artist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId }),
-      });
-      const data = await response.json();
-
-      if (response.status === 401) {
-        window.location.href = "/staff-login";
-        return;
-      }
-
-      if (response.status === 404 && data.code === "ARTIST_DETAILS_NOT_FOUND") {
-        window.location.href = `/sales/artist-orders/create?orderId=${encodeURIComponent(orderId)}`;
-        return;
-      }
-
-      if (!response.ok) throw new Error(data.error ?? "Could not prepare Artist WhatsApp message.");
-
-      setArtistSentOrders((current) => {
-        const next = new Set(current);
-        next.add(orderId);
-        return next;
-      });
-      setArtistMessages((messages) => ({ ...messages, [orderId]: "Artist acceptance link prepared." }));
-      void loadArtistStatuses();
-      window.open(data.whatsappUrl, "_blank", "noopener,noreferrer");
-    } catch (e) {
-      setArtistMessages((messages) => ({
-        ...messages,
-        [orderId]: e instanceof Error ? e.message : "Could not prepare Artist WhatsApp message.",
-      }));
-    } finally {
-      setSendingOrderId(null);
-    }
   }
 
   return (
@@ -294,9 +258,9 @@ export default function OrdersClient() {
                     const accepted = artist?.artistStatus === "ACCEPTED";
                     const sent = artist?.artistStatus === "SENT" || artistSentOrders.has(order.orderId);
                     const activeLink = artist?.artistStatus === "SENT" &&
-                      !!artist.linkExpiresAt && new Date(artist.linkExpiresAt).getTime() > Date.now();
+                      !!artist.linkExpiresAt && new Date(artist.linkExpiresAt).getTime() > statusNow;
                     const expiredLink = artist?.artistStatus === "SENT" &&
-                      !!artist.linkExpiresAt && new Date(artist.linkExpiresAt).getTime() <= Date.now();
+                      !!artist.linkExpiresAt && new Date(artist.linkExpiresAt).getTime() <= statusNow;
                     const sending = sendingOrderId === order.orderId;
                     return (
                       <tr key={order.orderId}>
@@ -355,6 +319,11 @@ export default function OrdersClient() {
           </div>
         </section>
       </main>
+      {sendingOrderId && <ArtistWhatsAppDialog key={sendingOrderId} orderId={sendingOrderId} onClose={() => setSendingOrderId(null)} onPrepared={() => {
+        setArtistSentOrders(current => new Set([...current, sendingOrderId]));
+        setArtistMessages(current => ({ ...current, [sendingOrderId]: "Artist acceptance link prepared." }));
+        void loadArtistStatuses();
+      }} />}
       {customerWhatsAppOrderId && <CustomerWhatsAppDialog orderId={customerWhatsAppOrderId} onClose={() => setCustomerWhatsAppOrderId(null)} />}
     </div>
   );

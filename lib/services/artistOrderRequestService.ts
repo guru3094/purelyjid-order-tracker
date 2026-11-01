@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { createClient } from "@supabase/supabase-js";
-import { appendArtistOrder } from "@/lib/google/artistSheet";
+import { artistProductName } from "@/lib/artist/product-review";
+import { appendArtistOrder, updateArtistOrder } from "@/lib/google/artistSheet";
 
 function db() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -35,6 +36,7 @@ export async function saveArtistOrderRequest(args: {
     order_date: args.orderDate,
     customer_name: args.customerName,
     product_name: args.productName,
+    artist_sheet_needs_update: true,
     requirements: String(details.requirements ?? "").trim(),
     artist_cost: artistCost,
     artist_advance: artistAdvance,
@@ -48,7 +50,7 @@ export async function saveArtistOrderRequest(args: {
   if (error) throw new Error(`Could not save Artist details: ${error.message}`);
 }
 
-export async function createArtistAcceptanceLink(orderId: string) {
+export async function createArtistAcceptanceLink(orderId: string, options: { productNameOverride?: unknown } = {}) {
   const client = db();
   const { data: order, error } = await client.from("artist_order_requests").select("*").eq("order_id", orderId).single();
   if (error || !order) throw new Error("Artist details were not found for this order.");
@@ -59,11 +61,18 @@ export async function createArtistAcceptanceLink(orderId: string) {
     }
   }
 
+  const productName = artistProductName(order.product_name, options.productNameOverride);
+  const sheetProductName = order.artist_sheet_product_name || (order.artist_sheet_updated ? order.product_name : null);
+  const needsSheetUpdate = Boolean(order.artist_sheet_needs_update || productName !== order.product_name);
+
   const token = randomBytes(32).toString("hex");
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const now = new Date().toISOString();
   const { error: updateError } = await client.from("artist_order_requests").update({
+    product_name: productName,
+    artist_sheet_product_name: sheetProductName,
+    artist_sheet_needs_update: needsSheetUpdate,
     acceptance_token_hash: tokenHash,
     acceptance_token_expires_at: expiresAt,
     artist_status: "SENT",
@@ -74,7 +83,7 @@ export async function createArtistAcceptanceLink(orderId: string) {
   if (updateError) throw new Error(`Could not prepare Artist acceptance link: ${updateError.message}`);
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://purelyjid.in").replace(/\/$/, "");
-  return { order, acceptanceUrl: `${appUrl}/artist/respond/${token}`, expiresAt };
+  return { order: { ...order, product_name: productName }, acceptanceUrl: `${appUrl}/artist/respond/${token}`, expiresAt };
 }
 
 export async function getArtistRequestByToken(token: string) {
@@ -90,6 +99,7 @@ export async function acceptArtistRequest(token: string) {
   const tokenHash = hashToken(token);
   const order = await getArtistRequestByToken(token);
   if (!order) throw new Error("This acceptance link is invalid or has expired.");
+  artistProductName(order.product_name);
   // Claim this one-time token before the Sheet write. Only one request can claim it.
   const { data: claimed, error: claimError } = await client
     .from("artist_order_requests")
@@ -109,9 +119,17 @@ export async function acceptArtistRequest(token: string) {
   // A fresh link can confirm an already accepted order. Record the new response
   // (so it can notify staff) without appending the same order to the Sheet again.
   if (order.artist_sheet_updated) {
+    try {
+      if (order.artist_sheet_needs_update) await updateArtistOrder(order, order.artist_sheet_product_name || order.product_name);
+    } catch (error) {
+      await client.from("artist_order_requests").update({ acceptance_token_hash: tokenHash, acceptance_token_expires_at: order.acceptance_token_expires_at }).eq("order_id", order.order_id).is("acceptance_token_hash", null);
+      throw error;
+    }
     const now = new Date().toISOString();
     const { error } = await client.from("artist_order_requests").update({
       artist_status: "ACCEPTED",
+      artist_sheet_needs_update: false,
+      artist_sheet_product_name: order.product_name,
       accepted_at: now,
       updated_at: now,
     }).eq("order_id", order.order_id);
@@ -143,6 +161,8 @@ export async function acceptArtistRequest(token: string) {
     artist_status: "ACCEPTED",
     accepted_at: now,
     artist_sheet_updated: true,
+    artist_sheet_needs_update: false,
+    artist_sheet_product_name: order.product_name,
     artist_sheet_updated_at: now,
     updated_at: now,
   }).eq("order_id", order.order_id);

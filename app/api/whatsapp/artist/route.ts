@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isStaffAuthenticated } from "@/lib/auth/staffAuth";
+import { ArtistProductReviewRequired } from "@/lib/artist/product-review";
 import { createArtistAcceptanceLink } from "@/lib/services/artistOrderRequestService";
 
 function formatDeliveryDate(value?: string | null) {
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { orderId } = await request.json();
+    const { orderId, productNameOverride } = await request.json();
     if (!orderId || typeof orderId !== "string") {
       return NextResponse.json({ error: "orderId is required." }, { status: 400 });
     }
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "RESIN_ARTIST_WHATSAPP_NUMBER is not configured." }, { status: 500 });
     }
 
-    const { order, acceptanceUrl, expiresAt } = await createArtistAcceptanceLink(orderId.trim());
+    const { order, acceptanceUrl, expiresAt } = await createArtistAcceptanceLink(orderId.trim(), { productNameOverride });
     const message = [
       "New PurelyJid Order",
       "",
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
       whatsappUrl: `https://wa.me/${artistNumber}?text=${encodeURIComponent(message)}`,
     });
   } catch (error) {
+    if (error instanceof ArtistProductReviewRequired) return NextResponse.json({ error: error.message, code: "ARTIST_PRODUCT_REVIEW_REQUIRED", productName: error.productName }, { status: 409 });
     const message = error instanceof Error ? error.message : "Could not prepare Artist WhatsApp message.";
     if (message === "Artist details were not found for this order.") {
       return NextResponse.json(

@@ -1,4 +1,5 @@
 import { getArtistRequestByToken } from "@/lib/services/artistOrderRequestService";
+import { hasProductPrice } from "@/lib/artist/product-review";
 import AcceptButton from "./accept-button";
 
 function formatDeliveryDate(value?: string | null) {
@@ -11,7 +12,7 @@ export default async function ArtistRespondPage({params}:{params:Promise<{token:
   const {token}=await params;
   const order=await getArtistRequestByToken(token);
 
-  if(!order) {
+  if(!order || hasProductPrice(order.product_name)) {
     return <main className="artist-response-page"><section className="artist-response-card">
       <img src="/purelyjid-logo.png" alt="PurelyJid" className="artist-response-logo"/>
       <h1>Link unavailable</h1>
