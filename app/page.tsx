@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import SiteHeader from "@/components/homepage/SiteHeader";
 import SiteFooter from "@/components/homepage/SiteFooter";
+import DiwaliBanner from "@/components/homepage/DiwaliBanner";
 
 const whatsapp = (item: string) =>
   `https://wa.me/919518770073?text=${encodeURIComponent(`Hi PurelyJid, I am interested in ${item}. Please share more details.`)}`;
@@ -28,6 +29,7 @@ export default function HomePage() {
   return (
     <main className="home-page">
       <SiteHeader />
+      <DiwaliBanner />
 
       <section className="hero-section">
         <div className="site-shell hero-content">
