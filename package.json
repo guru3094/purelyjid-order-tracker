@@ -23,7 +23,9 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "svg-path-bbox": "^2.1.0",
-    "svgpath": "^2.6.0"
+    "svgpath": "^2.6.0",
+    "@vercel/blob": "2.9.0",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -33,6 +35,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@types/three": "^0.187.0"
   }
 }
