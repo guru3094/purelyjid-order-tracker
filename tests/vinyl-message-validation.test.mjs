@@ -41,15 +41,38 @@ test('detect monetary product notation without treating sizes and quantities as 
  for(const name of ['Frame ₹2500','Frame Rs. 500','Frame 500 INR','Frame 500/-','Frame - 2,500','Price: 2500','Frame - 500 (including name)']) assert.equal(price.hasProductPrice(name),true,name);
  for(const name of ['12 x 18 inch Frame','3D flowers','2 keychains, 5 cm','Wedding 29/10/2026','Frame - 12 cm'])assert.equal(price.hasProductPrice(name),false,name);
 });
+test('opening review reads the current draft without preparing a request', async () => {
+ const f = fixture('Custom frame');
+ f.order.estimated_delivery_date = '2026-11-24';
+ f.order.artist_cost = 200;
+ const response = await artistRoute.GET(new Request('https://purelyjid.in/api/whatsapp/artist?orderId=PJ100001'));
+ assert.equal(response.status, 200);
+ assert.equal(response.headers.get('cache-control'), 'private, no-store');
+ assert.deepEqual(await response.json(), {productName: 'Custom frame', estimatedDeliveryDate: '2026-11-24'});
+ assert.equal(f.updates.length, 0);
+ const unreviewed = await artistRoute.POST(req({orderId: 'PJ100001'}));
+ assert.equal(unreviewed.status, 400);
+ assert.equal(f.updates.length, 0);
+});
+test('an invalid delivery date does not prepare a request', async () => {
+ const f = fixture();
+ const response = await artistRoute.POST(req({
+  orderId: 'PJ100001',
+  productNameOverride: 'Custom frame',
+  estimatedDeliveryDate: '2026-11-31',
+ }));
+ assert.equal(response.status, 400);
+ assert.equal(f.updates.length, 0);
+});
 test('priced product triggers editable response without issuing a token or saving a sent request',async()=>{
- const f=fixture();const r=await artistRoute.POST(req({orderId:'PJ100001'}));assert.equal(r.status,409);assert.equal((await r.json()).code,'ARTIST_PRODUCT_REVIEW_REQUIRED');assert.equal(f.updates.length,0);
+ const f=fixture();const r=await artistRoute.POST(req({orderId:'PJ100001',productNameOverride:'Frame ₹2,500'}));assert.equal(r.status,409);assert.equal((await r.json()).code,'ARTIST_PRODUCT_REVIEW_REQUIRED');assert.equal(f.updates.length,0);
 });
 test('reviewed description is used in WhatsApp, token page data and Sheet; artist remarks and prices stay private',async()=>{
- const f=fixture();const r=await artistRoute.POST(req({orderId:'PJ100001',productNameOverride:'12 x 18 inch Frame'}));assert.equal(r.status,200);
- const data=await r.json(),message=new URL(data.whatsappUrl).searchParams.get('text');assert.match(message,/Product: 12 x 18 inch Frame/);assert.doesNotMatch(message,/Remarks:|Blue background|2,500/);assert.doesNotMatch(data.acceptanceUrl,/2,500|2500|Frame|Blue/);
+ const f=fixture();const r=await artistRoute.POST(req({orderId:'PJ100001',productNameOverride:'12 x 18 inch Frame',estimatedDeliveryDate:'2026-11-24'}));assert.equal(r.status,200);
+ const data=await r.json(),message=new URL(data.whatsappUrl).searchParams.get('text');assert.match(message,/Product: 12 x 18 inch Frame/);assert.match(message,/Estimated Delivery Date: 24\/11\/2026/);assert.doesNotMatch(message,/Remarks:|Blue background|2,500/);assert.doesNotMatch(data.acceptanceUrl,/2,500|2500|Frame|Blue/);
  assert.equal(f.order.product_name,'12 x 18 inch Frame');assert.equal(f.sourceOrders[0].productName,'Frame ₹2,500');
  const token=data.acceptanceUrl.split('/').at(-1);assert.equal((await service.getArtistRequestByToken(token)).product_name,'12 x 18 inch Frame');await service.acceptArtistRequest(token);
- assert.equal(f.sheetAppend.requestBody.values[0][3],'12 x 18 inch Frame');assert.equal(f.sheetAppend.requestBody.values[0][10],'Handle carefully');assert.equal(f.order.artist_status,'ACCEPTED');
+ assert.equal(f.sheetAppend.requestBody.values[0][3],'12 x 18 inch Frame');assert.equal(f.sheetAppend.requestBody.values[0][8],'24/11/2026');assert.equal(f.sheetAppend.requestBody.values[0][10],'Handle carefully');assert.equal(f.order.artist_status,'ACCEPTED');
 });
 test('a corrected resend updates the existing sheet row rather than appending a duplicate',async()=>{
  const f=fixture();f.order.artist_status='ACCEPTED';f.order.artist_sheet_updated=true;f.sheetRows=[['Month','Date','Customer','Product'],['Oct','10/29/2026','Test Customer','Frame ₹2,500']];
@@ -68,4 +91,4 @@ test('legacy tokens cannot accept a product name that still includes a price',as
  const f=fixture();const token='a'.repeat(64);const {createHash}=await import('node:crypto');f.order.acceptance_token_hash=createHash('sha256').update(token).digest('hex');f.order.acceptance_token_expires_at=new Date(Date.now()+60000).toISOString();
  await assert.rejects(()=>service.acceptArtistRequest(token),/appears to contain a price/);assert.equal(f.updates.length,0);assert.equal(f.sheetAppend,undefined);
 });
-test('artist endpoint remains staff-only' ,async()=>{fixture().authorized=false;assert.equal((await artistRoute.POST(req({orderId:'PJ100001'}))).status,401);});
+test('artist endpoint remains staff-only' ,async()=>{fixture().authorized=false;assert.equal((await artistRoute.GET(new Request('https://purelyjid.in/api/test?orderId=PJ100001'))).status,401);assert.equal((await artistRoute.POST(req({orderId:'PJ100001'}))).status,401);});

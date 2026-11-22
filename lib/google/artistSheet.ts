@@ -79,9 +79,10 @@ export async function updateArtistOrder(order: ArtistSheetOrder, previousProduct
   if (matches.length !== 1) throw new Error("Could not uniquely find the existing Artist Sheet row. Check the customer/date/product entry before retrying acceptance.");
   const rowNumber = matches[0].index + 1;
   // Keep the artist's existing status, costs and progress; change only the
-  // artist-facing product description and artist comments entered by staff.
+  // reviewed product description, delivery date and artist comments entered by staff.
   await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "RAW", data: [
     { range: `${quoted}!D${rowNumber}`, values: [[order.product_name]] },
+    { range: `${quoted}!I${rowNumber}`, values: [[formatDeliveryDate(order.estimated_delivery_date)]] },
     { range: `${quoted}!K${rowNumber}`, values: [[order.comments ?? ""]] },
   ] } });
 }
