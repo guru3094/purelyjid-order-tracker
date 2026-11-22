@@ -50,7 +50,17 @@ export async function saveArtistOrderRequest(args: {
   if (error) throw new Error(`Could not save Artist details: ${error.message}`);
 }
 
-export async function createArtistAcceptanceLink(orderId: string, options: { productNameOverride?: unknown } = {}) {
+export async function getArtistMessageDraft(orderId: string) {
+  const { data, error } = await db().from("artist_order_requests")
+    .select("product_name, estimated_delivery_date").eq("order_id", orderId).maybeSingle();
+  if (error) throw new Error("Could not load Artist details.");
+  return data;
+}
+
+export async function createArtistAcceptanceLink(
+  orderId: string,
+  options: { productNameOverride?: unknown; estimatedDeliveryDate?: string } = {},
+) {
   const client = db();
   const { data: order, error } = await client.from("artist_order_requests").select("*").eq("order_id", orderId).single();
   if (error || !order) throw new Error("Artist details were not found for this order.");
@@ -63,7 +73,10 @@ export async function createArtistAcceptanceLink(orderId: string, options: { pro
 
   const productName = artistProductName(order.product_name, options.productNameOverride);
   const sheetProductName = order.artist_sheet_product_name || (order.artist_sheet_updated ? order.product_name : null);
-  const needsSheetUpdate = Boolean(order.artist_sheet_needs_update || productName !== order.product_name);
+  const deliveryDate = options.estimatedDeliveryDate ?? order.estimated_delivery_date;
+  const needsSheetUpdate = Boolean(
+    order.artist_sheet_needs_update || productName !== order.product_name || deliveryDate !== order.estimated_delivery_date,
+  );
 
   const token = randomBytes(32).toString("hex");
   const tokenHash = hashToken(token);
@@ -71,6 +84,7 @@ export async function createArtistAcceptanceLink(orderId: string, options: { pro
   const now = new Date().toISOString();
   const { error: updateError } = await client.from("artist_order_requests").update({
     product_name: productName,
+    estimated_delivery_date: deliveryDate,
     artist_sheet_product_name: sheetProductName,
     artist_sheet_needs_update: needsSheetUpdate,
     acceptance_token_hash: tokenHash,
@@ -83,7 +97,7 @@ export async function createArtistAcceptanceLink(orderId: string, options: { pro
   if (updateError) throw new Error(`Could not prepare Artist acceptance link: ${updateError.message}`);
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://purelyjid.in").replace(/\/$/, "");
-  return { order: { ...order, product_name: productName }, acceptanceUrl: `${appUrl}/artist/respond/${token}`, expiresAt };
+  return { order: { ...order, product_name: productName, estimated_delivery_date: deliveryDate }, acceptanceUrl: `${appUrl}/artist/respond/${token}`, expiresAt };
 }
 
 export async function getArtistRequestByToken(token: string) {
